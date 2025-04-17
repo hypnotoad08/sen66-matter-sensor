@@ -1,0 +1,150 @@
+###############################################################################
+# Target
+###############################################################################
+CONFIG_IDF_TARGET="esp32s3"
+
+###############################################################################
+# Flash Configuration
+###############################################################################
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+###############################################################################
+# PSRAM (8 MB OPI)
+###############################################################################
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+###############################################################################
+# Partition Table (custom)
+###############################################################################
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+
+###############################################################################
+# NVS Namespaces for ESP‑Matter
+###############################################################################
+# Built‑in factory commissioning data
+CONFIG_CHIP_FACTORY_NAMESPACE_PARTITION_LABEL="chip-factory"
+# Dynamic Matter state (fabrics, endpoints)
+CONFIG_CHIP_CONFIG_NAMESPACE_PARTITION_LABEL="chip-config"
+
+
+###############################################################################
+# Network Interfaces
+###############################################################################
+# Wi‑Fi
+CONFIG_ESP_WIFI_ENABLED=y
+CONFIG_ESP_WIFI_SOFTAP_SUPPORT=y
+# Thread
+CONFIG_ESP_MATTER_TRANSPORT_THREAD=y
+CONFIG_OPENTHREAD_ENABLED=n
+CONFIG_OPENTHREAD_FTD=y
+CONFIG_OPENTHREAD_SRP_CLIENT=y
+CONFIG_OPENTHREAD_DNS_CLIENT=y
+
+###############################################################################
+# Clock & Time
+###############################################################################
+CONFIG_RTC_CLK_SRC_EXT_CRYS=y
+ENABLE_SNTP_TIME_SYNC=y
+
+###############################################################################
+# Console / Logging
+###############################################################################
+CONFIG_ESP_CONSOLE_UART=y
+CONFIG_ESP_CONSOLE_UART_NUM=0
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
+CONFIG_LOG_TX_BUFFER_USE_PSRAM=y
+CONFIG_MDNS_TASK_STACK_SIZE=8192
+
+###############################################################################
+# FreeRTOS
+###############################################################################
+CONFIG_FREERTOS_HZ=1000
+
+###############################################################################
+# UART (debug and MATTER UART transport)
+###############################################################################
+CONFIG_UART_DRIVER_ENABLED=y
+CONFIG_UART_NUM=1
+CONFIG_UART_TX_GPIO=43
+CONFIG_UART_RX_GPIO=44
+CONFIG_UART_BAUD_RATE=115200
+CONFIG_ESP_MATTER_UART_PORT_NUM=1
+CONFIG_ESP_MATTER_SERIAL_SPEED=115200
+
+###############################################################################
+# Bluetooth / BLE (NimBLE)
+###############################################################################
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BLUEDROID_ENABLED=n
+CONFIG_BT_NIMBLE_HOST=y
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y
+CONFIG_BT_NIMBLE_GATT_SERVER=y
+CONFIG_BT_NIMBLE_HCI_EVT_BUF_SIZE=70
+CONFIG_BT_NIMBLE_SVC_GATT_CLI_MAX=4
+CONFIG_BT_NIMBLE_GAP_ROLE_CENTRAL=n
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+CONFIG_ENABLE_BLE_EXT_ANNOUNCEMENT=y
+
+###############################################################################
+# ESP‑Matter Core
+###############################################################################
+CONFIG_ESP_MATTER_ENABLE=y
+CONFIG_ESP_MATTER_LOG_LEVEL_INFO=y
+CONFIG_ESP_MATTER_TRANSPORT_BLE=y
+CONFIG_ESP_MATTER_COMMISSIONER_ENABLE=y
+CONFIG_FACTORY_COMMISSIONABLE_DATA_PROVIDER=y
+CONFIG_FACTORY_PARTITION_DAC_PROVIDER=y
+CONFIG_FACTORY_DEVICE_INSTANCE_INFO_PROVIDER=y
+CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER=y
+CONFIG_ENABLE_ESP32_DEVICE_INSTANCE_INFO_PROVIDER=y
+CONFIG_ENABLE_EXTENDED_DISCOVERY=y
+CONFIG_ENABLE_CHIP_SHELL=y
+
+###############################################################################
+# Matter Network Endpoint IDs
+###############################################################################
+CONFIG_WIFI_NETWORK_ENDPOINT_ID=0
+CONFIG_THREAD_NETWORK_ENDPOINT_ID=1
+
+###############################################################################
+# Discovery & Commissioning
+###############################################################################
+CONFIG_USE_MINIMAL_MDNS=n
+DEVICE_VENDOR_ID=0xFFF2
+DEVICE_PRODUCT_ID=0x66a1
+CONFIG_SUPPORT_ACCOUNT_LOGIN_CLUSTER=n        # example of disabled clusters…
+# (…all the other CONFIG_SUPPORT_*_CLUSTER entries…)
+
+###############################################################################
+# Crypto / mbedTLS
+###############################################################################
+CONFIG_LIBSODIUM_USE_MBEDTLS_SHA=y
+CONFIG_MBEDTLS_HKDF_C=y
+CONFIG_MBEDTLS_KEY_EXCHANGE_ECJPAKE=y
+CONFIG_MBEDTLS_ECJPAKE_C=y
+CONFIG_MBEDTLS_SSL_PROTO_DTLS=y
+
+###############################################################################
+# LwIP adjustments (for Thread)
+###############################################################################
+CONFIG_LWIP_IPV6_NUM_ADDRESSES=12
+CONFIG_LWIP_MULTICAST_PING=y
+CONFIG_LWIP_HOOK_IP6_ROUTE_DEFAULT=y
+CONFIG_LWIP_HOOK_ND6_GET_GW_DEFAULT=y
+
+###############################################################################
+# Misc
+###############################################################################
+CONFIG_ENABLE_CHIP_SHELL=y
+CONFIG_ESP_SECURE_CERT_DS_PERIPHERAL=n
+CONFIG_CUSTOM_DEVICE_INSTANCE_INFO_PROVIDER=n
+CONFIG_ENABLE_SNTP_TIME_SYNC=y
+CONFIG_LWIP_DHCP_GET_NTP_SRV=y

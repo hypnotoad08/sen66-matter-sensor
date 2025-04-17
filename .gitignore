@@ -1,0 +1,69 @@
+# ====================
+# IDF & CMake build artifacts
+# ====================
+build/                   
+build_*_/                
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+sdkconfig
+sdkconfig.old
+*.bin
+*.elf
+*.map
+*.hex
+partition-table.bin
+partitions.csv*
+.cache/
+*.cmake
+*.ninja*
+*.ninja_deps*
+
+# ====================
+# ESP‑IDF python virtualenv & tooling
+# ====================
+python_env/
+.idf-env/
+.venv/
+env/
+.ESP_IDF*/
+
+# ====================
+# MFG tool outputs
+# ====================
+out/
+*_partition-*.csv
+*_onb_codes.csv
+*_partitions.bin
+
+# ====================
+# Editor, IDE, OS
+# ====================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# ====================
+# Logs, coverage, caches
+# ====================
+*.log
+*.d
+*.gcda
+*.gcno
+__pycache__/
+.pytest_cache/
+pytest_embedded_log/
+
+# ====================
+# CI & tooling outputs
+# ====================
+build_summary_*.xml
+app_info_*.txt
+size_info_*.txt
+dependencies.lock

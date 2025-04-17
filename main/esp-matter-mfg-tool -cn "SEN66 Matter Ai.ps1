@@ -1,0 +1,11 @@
+esp-matter-mfg-tool \
+  -cn "SEN66 Matter Air Sensor" \
+  -v 0xFFF2 --vendor-name "Lee Dev" \
+  -p 0x66A1 --product-name "Nano AQ Sensor" \
+  --pai \
+  --serial-num SN-ESP32S3-0001 \
+  --hw-ver 1 \
+  --hw-ver-str v1.0 \
+  -k ~/esp/esp-matter/connectedhomeip/connectedhomeip/credentials/test/attestation/test-PAI-0xFFF2-key.pem \
+  -c ~/esp/esp-matter/connectedhomeip/connectedhomeip/credentials/test/attestation/test-PAI-0xFFF2-cert.pem \
+  -cd ~/esp/esp-matter/connectedhomeip/connectedhomeip/credentials/test/certification-declaration/Chip-Test-CD-0xFFF2-0x66A1.der
