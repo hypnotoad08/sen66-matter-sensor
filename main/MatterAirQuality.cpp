@@ -1,6 +1,8 @@
 #include "MatterAirQuality.h"
 #include <esp_log.h>
 #include <common_macros.h>
+#include <cmath>
+#include <inttypes.h>
 
 using namespace esp_matter;
 using namespace chip::app::Clusters;
@@ -22,93 +24,181 @@ void MatterAirQuality::CreateAirQualityEndpoint()
         return;
     }
 
+    // Add Air Quality Cluster (base cluster) - no extra features needed
+
+    // TemperatureMeasurement Cluster
     {
         cluster::temperature_measurement::config_t cfg = {};
         cluster::temperature_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
     }
+
+    // RelativeHumidityMeasurement Cluster
     {
         cluster::relative_humidity_measurement::config_t cfg = {};
         cluster::relative_humidity_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
     }
+
+    // CarbonDioxideConcentrationMeasurement Cluster
     {
         cluster::carbon_dioxide_concentration_measurement::config_t cfg = {};
-        cluster::carbon_dioxide_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        cluster_t *co2_cluster = cluster::carbon_dioxide_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        if (co2_cluster) {
+            cluster::carbon_dioxide_concentration_measurement::feature::numeric_measurement::config_t feature_cfg = {};
+            cluster::carbon_dioxide_concentration_measurement::feature::numeric_measurement::add(co2_cluster, &feature_cfg);
+        }
     }
+
+    // PM1ConcentrationMeasurement Cluster
     {
         cluster::pm1_concentration_measurement::config_t cfg = {};
-        cluster::pm1_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        cluster_t *pm1_cluster = cluster::pm1_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        if (pm1_cluster) {
+            cluster::pm1_concentration_measurement::feature::numeric_measurement::config_t feature_cfg = {};
+            cluster::pm1_concentration_measurement::feature::numeric_measurement::add(pm1_cluster, &feature_cfg);
+        }
     }
+
+    // PM2.5ConcentrationMeasurement Cluster
     {
         cluster::pm25_concentration_measurement::config_t cfg = {};
-        cluster::pm25_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        cluster_t *pm25_cluster = cluster::pm25_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        if (pm25_cluster) {
+            cluster::pm25_concentration_measurement::feature::numeric_measurement::config_t feature_cfg = {};
+            cluster::pm25_concentration_measurement::feature::numeric_measurement::add(pm25_cluster, &feature_cfg);
+        }
     }
+
+    // PM10ConcentrationMeasurement Cluster
     {
         cluster::pm10_concentration_measurement::config_t cfg = {};
-        cluster::pm10_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        cluster_t *pm10_cluster = cluster::pm10_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        if (pm10_cluster) {
+            cluster::pm10_concentration_measurement::feature::numeric_measurement::config_t feature_cfg = {};
+            cluster::pm10_concentration_measurement::feature::numeric_measurement::add(pm10_cluster, &feature_cfg);
+        }
     }
+
+    // TotalVolatileOrganicCompoundsConcentrationMeasurement Cluster
     {
         cluster::total_volatile_organic_compounds_concentration_measurement::config_t cfg = {};
-        cluster::total_volatile_organic_compounds_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        cluster_t *voc_cluster = cluster::total_volatile_organic_compounds_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        if (voc_cluster) {
+            cluster::total_volatile_organic_compounds_concentration_measurement::feature::numeric_measurement::config_t feature_cfg = {};
+            cluster::total_volatile_organic_compounds_concentration_measurement::feature::numeric_measurement::add(voc_cluster, &feature_cfg);
+        }
     }
+
+    // NitrogenDioxideConcentrationMeasurement Cluster
     {
         cluster::nitrogen_dioxide_concentration_measurement::config_t cfg = {};
-        cluster::nitrogen_dioxide_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        cluster_t *nox_cluster = cluster::nitrogen_dioxide_concentration_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
+        if (nox_cluster) {
+            cluster::nitrogen_dioxide_concentration_measurement::feature::numeric_measurement::config_t feature_cfg = {};
+            cluster::nitrogen_dioxide_concentration_measurement::feature::numeric_measurement::add(nox_cluster, &feature_cfg);
+        }
     }
 }
-
-
 
 void MatterAirQuality::StartMeasurements()
 {
     ESP_LOGI(TAG, "MatterAirQuality started");
 }
 
+static bool AttributeNeedsUpdate(uint16_t endpoint_id, uint32_t cluster_id, uint32_t attribute_id, esp_matter_attr_val_t new_val)
+{   
+    cluster_t *cluster = esp_matter::cluster::get(endpoint_id, cluster_id);
+    if (!cluster) {
+        ESP_LOGW(TAG, "Cluster 0x%08" PRIX32 " not found on endpoint 0x%04X", cluster_id, endpoint_id);
+        return false; // Nothing to update
+    }
+    
+    attribute_t *attr = esp_matter::attribute::get(cluster, attribute_id);
+    if (!attr) {
+        ESP_LOGW(TAG, "Attribute 0x%08" PRIX32 " not found in cluster 0x%08" PRIX32, attribute_id, cluster_id);
+        return false; // Nothing to update
+    }
+    
+
+    esp_matter_attr_val_t current_val = {};
+    esp_err_t err = esp_matter::attribute::get_val(attr, &current_val);
+    if (err != ESP_OK) {
+         ESP_LOGW(TAG, "Failed to read attribute 0x%08" PRIX32 " (err=0x%x)", attribute_id, err);
+        return true; // Assume update needed if we can't read it
+    }
+
+    if (current_val.type != new_val.type) {
+        return true; // Type mismatch, better update
+    }
+
+    switch (new_val.type) {
+        case ESP_MATTER_VAL_TYPE_INT16:
+            return current_val.val.i16 != new_val.val.i16;
+        case ESP_MATTER_VAL_TYPE_FLOAT:
+            return fabs(current_val.val.f - new_val.val.f) > 0.01f; // Tiny tolerance for floats
+        default:
+            return true; // Unknown types, safer to update
+    }
+}
+
+
 void MatterAirQuality::UpdateAirQualityAttributes(const sen66_data_t *data)
 {
-    struct AttributeUpdate {
-        esp_matter::endpoint_t *endpoint;
+    if (!m_air_quality_endpoint) {
+        ESP_LOGW(TAG, "Air Quality endpoint not initialized");
+        return;
+    }
+
+    const uint16_t endpoint_id = esp_matter::endpoint::get_id(m_air_quality_endpoint);
+
+    struct Int16Update {
         uint32_t cluster_id;
         uint32_t attribute_id;
         int16_t value;
     };
 
-    AttributeUpdate updates[] = {
-        { m_endpoint_temp, TemperatureMeasurement::Id, TemperatureMeasurement::Attributes::MeasuredValue::Id, (int16_t)(data->temperature * 100) },
-        { m_endpoint_hum, RelativeHumidityMeasurement::Id, RelativeHumidityMeasurement::Attributes::MeasuredValue::Id, (int16_t)(data->humidity * 100) },
-
-        { m_endpoint_pm1, Pm1ConcentrationMeasurement::Id, Pm1ConcentrationMeasurement::Attributes::MeasuredValue::Id, (int16_t)(data->pm1_0 * 10) },
-        { m_endpoint_pm25, Pm25ConcentrationMeasurement::Id, Pm25ConcentrationMeasurement::Attributes::MeasuredValue::Id, (int16_t)(data->pm2_5 * 10) },
-        { m_endpoint_pm10, Pm10ConcentrationMeasurement::Id, Pm10ConcentrationMeasurement::Attributes::MeasuredValue::Id, (int16_t)(data->pm10_0 * 10) },
-
-        { m_endpoint_co2, CarbonDioxideConcentrationMeasurement::Id, CarbonDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id, (int16_t)(data->co2_equivalent) },
-
-        { m_endpoint_voc, TotalVolatileOrganicCompoundsConcentrationMeasurement::Id, TotalVolatileOrganicCompoundsConcentrationMeasurement::Attributes::MeasuredValue::Id, (int16_t)(data->voc_index * 10) },
-
-        { m_endpoint_nox, NitrogenDioxideConcentrationMeasurement::Id, NitrogenDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id, (int16_t)(data->nox_index * 10) },
+    struct FloatUpdate {
+        uint32_t cluster_id;
+        uint32_t attribute_id;
+        float value;
     };
 
-    for (const auto &update : updates) {
-        if (!update.endpoint) {
-            continue;
-        }
+    Int16Update int16_updates[] = {
+        { TemperatureMeasurement::Id, TemperatureMeasurement::Attributes::MeasuredValue::Id, static_cast<int16_t>(data->temperature * 100) },
+        { RelativeHumidityMeasurement::Id, RelativeHumidityMeasurement::Attributes::MeasuredValue::Id, static_cast<int16_t>(data->humidity * 100) },
+        { CarbonDioxideConcentrationMeasurement::Id, CarbonDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id, static_cast<int16_t>(data->co2_equivalent) }
+    };
 
-        uint16_t endpoint_id = endpoint::get_id(update.endpoint);
-        cluster_t *cluster = cluster::get(endpoint_id, update.cluster_id);
-        if (!cluster) {
-            ESP_LOGW(TAG, "No cluster 0x%08" PRIX32 " on endpoint 0x%04X", update.cluster_id, endpoint_id);
-            continue;
-        }
+    FloatUpdate float_updates[] = {
+        { Pm1ConcentrationMeasurement::Id, Pm1ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm1_0 },
+        { Pm25ConcentrationMeasurement::Id, Pm25ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm2_5 },
+        { Pm10ConcentrationMeasurement::Id, Pm10ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm10_0 },
+        { TotalVolatileOrganicCompoundsConcentrationMeasurement::Id, TotalVolatileOrganicCompoundsConcentrationMeasurement::Attributes::MeasuredValue::Id, data->voc_index },
+        { NitrogenDioxideConcentrationMeasurement::Id, NitrogenDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id, data->nox_index },
+    };
 
-        attribute_t *attribute = attribute::get(cluster, update.attribute_id);
-        if (!attribute) {
-            ESP_LOGW(TAG, "No attribute 0x%08" PRIX32 " in cluster 0x%08" PRIX32, update.attribute_id, update.cluster_id);
-            continue;
-        }
-
+    // Update int16 attributes
+    for (const auto &update : int16_updates) {
         esp_matter_attr_val_t attr_val = esp_matter_int16(update.value);
         esp_err_t err = attribute::update(endpoint_id, update.cluster_id, update.attribute_id, &attr_val);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Update fail 0x%x: endpoint 0x%04X cluster 0x%08" PRIX32 " attr 0x%08" PRIX32, err, endpoint_id, update.cluster_id, update.attribute_id);
+            ESP_LOGW(TAG, "Failed to update INT16 cluster 0x%08X attr 0x%08X (err=0x%X)",
+                     static_cast<unsigned int>(update.cluster_id),
+                     static_cast<unsigned int>(update.attribute_id),
+                     static_cast<unsigned int>(err));
+        }
+    }
+
+    // Update float attributes
+    for (const auto &update : float_updates) {
+        esp_matter_attr_val_t attr_val = esp_matter_float(update.value);
+        esp_err_t err = attribute::update(endpoint_id, update.cluster_id, update.attribute_id, &attr_val);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to update FLOAT cluster 0x%08X attr 0x%08X (err=0x%X)",
+                     static_cast<unsigned int>(update.cluster_id),
+                     static_cast<unsigned int>(update.attribute_id),
+                     static_cast<unsigned int>(err));
         }
     }
 }
+
+
