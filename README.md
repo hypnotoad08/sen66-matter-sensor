@@ -204,4 +204,6 @@ These values are derived from the factory partition's metadata. If you revert to
 
 Adjust these constants to match your commissioning data for accurate QR/manual pairing information.
 
+*Inspired by [matter-air-quality-esp32](https://github.com/olavt/matter-air-quality-esp32) by @olavt.*
+
 © 2025 Lee Dev · MIT License
