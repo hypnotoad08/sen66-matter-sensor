@@ -43,7 +43,6 @@ set(EXTRA_COMPONENT_DIRS
     "${MATTER_SDK_PATH}/config/esp32/components"
     "${ESP_MATTER_PATH}/components"
     "${ESP_MATTER_PATH}/device_hal/device"
-    "$ENV{IDF_PATH}/components/ieee802154"
     ${extra_components_dirs_append})
 
 project(sen66-matter-sensor)

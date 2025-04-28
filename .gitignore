@@ -2,7 +2,8 @@
 # IDF & CMake build artifacts
 # ====================
 build/                   
-build_*_/                
+build_*_/
+managed_components/                
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
