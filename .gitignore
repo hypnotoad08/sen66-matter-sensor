@@ -68,3 +68,8 @@ build_summary_*.xml
 app_info_*.txt
 size_info_*.txt
 dependencies.lock
+sdkconfig_04-25.defaults
+sdkconfig-test.defaults
+sdkconfig.defaults_
+main/esp-matter-mfg-tool -cn "SEN66 Matter Ai.ps1
+Untitled-1.sh
