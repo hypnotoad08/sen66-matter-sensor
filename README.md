@@ -10,6 +10,13 @@
 
 > **Note:** This project was built and tested on an **Arduino Nano ESP32-S3**. If you are using a different ESP32-based board (e.g., ESP32, ESP32-C3, ESP32-S2), please verify your `sdkconfig` matches your board's flash size, PSRAM configuration, and peripheral support before building/flashing.
 
+- **I²C Pins**: The default I²C HAL in `components/sen66/src/sensirion_i2c_hal.c` sets:
+```c
+#define I2C_MASTER_SDA_IO 11  // SDA pin
+#define I2C_MASTER_SCL_IO 12  // SCL pin
+```
+for the Arduino Nano ESP32. Update these definitions if using other boards.
+
 ### Prerequisites
 
 1. Install ESP-IDF (https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/get-started/)  
@@ -29,9 +36,10 @@
 
 ```text
 sen66-matter-sensor/
+├── .devcontainer/            # VSCode devcontainer configuration
 ├── CMakeLists.txt            # Top-level project file
 ├── sdkconfig.defaults        # Default ESP-IDF config
-├── partitions_example.csv    # Sample partition table
+├── partitions_example.csv    # Sample partition table (copy to partitions.csv)
 ├── docs/                     # Prebuilt docs (optional)
 │   ├── factory_partition.bin # Factory partition image
 │   └── qr_code.png           # QR code for Matter commissioning
@@ -41,15 +49,16 @@ sen66-matter-sensor/
 │       ├── app_main.cpp      # Matter node init + sensor loop
 │       ├── factory_reset.cpp # Button-triggered factory reset
 │       └── sntp_sync.cpp     # SNTP time synchronization
-├── components/
+├── components/               # Application components
 │   ├── sen66/                # Sensirion SEN66 driver component
-│   │   ├── include/
-│   │   ├── src/
+│   │   ├── include/          # Public headers
+│   │   ├── src/              # I²C HAL & driver implementations
 │   │   └── CMakeLists.txt
 │   └── air_quality/          # Matter cluster glue
-│       ├── include/
-│       ├── src/
-│       └── CMakeLists.txt
+│       ├── include/          # `MatterAirQuality.h`
+│   ├── src/                  # Cluster implementation
+│   └── CMakeLists.txt
+├── .gitignore                # Git ignore rules
 └── README.md                 # This file
 ```
 
@@ -88,7 +97,6 @@ esp-matter-mfg-tool \
   -c path/to/test-PAI-0xFFF2-cert.pem \
   -cd path/to/Chip-Test-CD-0xFFF2-0x66A1.der
 ```
-Or refer to the [ESP Matter Manufacturing Tool docs](https://esp-matter.readthedocs.io/en/latest/mfg_tool.html) for more details.
 
 ### Reverting to Built-in ESP32 DAC
 
@@ -191,7 +199,7 @@ payload.setUpPINCode = 73663224;
 
 These values are derived from the factory partition's metadata. If you revert to the Test (built-in) DAC provider and remove the `chip-factory` partition, you must:
 
-- Update `discriminator` and `setUpPINCode` to the new values defined (e.g., from `sdkconfig` or code)  
+- Update `discriminator` and `setUpPINCode` to the new values defined (e.g., from `sdkconfig` or code`)  
 - Or remove/disable the `displayMatterInfo()` call if not needed.
 
 Adjust these constants to match your commissioning data for accurate QR/manual pairing information.
