@@ -93,8 +93,8 @@ void displayMatterInfo()
 {
     SetupPayload payload;
     payload.version = 0;
-    payload.discriminator.SetLongValue(2516);
-    payload.setUpPINCode = 19515139;
+    payload.discriminator.SetLongValue(397);
+    payload.setUpPINCode = 73663224;
     payload.rendezvousInformation.SetValue(RendezvousInformationFlag::kBLE);
 
     std::string qr, manual;

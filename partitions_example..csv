@@ -1,0 +1,7 @@
+# Name,Type,SubType,Offset,Size,Flags
+nvs,data,nvs,0x09000,0x10000,
+phy_init,data,phy,0x19000,0x01000,
+chip-factory,data,nvs,0x1A000,0x06000,
+chip-config,data,nvs,0x20000,0x06000,
+factory,app,factory,0x30000,0xFC0000
+
