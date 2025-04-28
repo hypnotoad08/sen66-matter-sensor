@@ -1,40 +1,86 @@
-# Light
+# sen66-matter-sensor
 
-This example creates a Color Temperature Light device using the ESP
-Matter data model.
+"sen66-matter-sensor" is an ESP-IDF project that integrates the Sensirion SEN66 air quality sensor with the ESP Matter data model, exposing temperature, humidity, particulate matter, CO₂, VOC, and NOₓ measurements as Matter clusters.
 
-See the [docs](https://docs.espressif.com/projects/esp-matter/en/latest/esp32/developing.html) for more information about building and flashing the firmware.
+## 1. Board & Environment
 
-## 1. Additional Environment Setup
+- **Target**: Arduino Nano ESP32 (ESP32-S3)
+- **ESP-IDF**: v5.4.1 or later
+- **Matter SDK**: ESP Matter (via `esp_matter` component)
 
-No additional setup is required.
+### Prerequisites
 
-## 2. Post Commissioning Setup
+1. Install ESP-IDF (https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/).
+2. Clone this repository:
+   ```bash
+   git clone https://github.com/hypnotoad08/sen66-matter-sensor.git
+   cd sen66-matter-sensor
+   ```
+3. Set `ESP_MATTER_PATH` and `MATTER_SDK_PATH` in your environment to point at your `esp-matter` and `connectedhomeip` checkout locations, respectively.
+4. Install Python3 requirements if prompted by ESP-IDF.
 
-No additional setup is required.
+## 2. Project Structure
 
-## 3. Device Performance
+```
+sen66-matter-sensor/
+├── CMakeLists.txt            # Top-level project settings
+├── sdkconfig.defaults        # Default IDF configuration for board
+├── main/
+│   ├── src/
+│   │   ├── app_main.cpp      # Initializes Matter node, sensor loop
+│   │   ├── factory_reset.cpp # Button-driven factory reset logic
+│   │   └── sntp_sync.cpp     # SNTP setup for timestamping
+│   └── CMakeLists.txt        # IDF component for main application
+├── components/
+│   ├── sen66/                # Sensirion SEN66 driver component
+│   │   ├── include/          # Public headers for `sensirion_*` APIs
+│   │   ├── src/              # I²C HAL and common implementations
+│   │   └── CMakeLists.txt
+│   └── air_quality/          # Matter cluster glue for air quality
+│       ├── include/          # `MatterAirQuality.h`
+│       ├── src/              # `MatterAirQuality.cpp` updates Matter attributes
+│       └── CMakeLists.txt
+└── README.md
+```
 
-### 3.1 Memory usage
+## 3. Build & Flash
 
-The following is the Memory and Flash Usage.
+```bash
+# Set up ESP-IDF environment
+. $HOME/esp/esp-idf/export.sh
 
--   `Bootup` == Device just finished booting up. Device is not
-    commissionined or connected to wifi yet.
--   `After Commissioning` == Device is conneted to wifi and is also
-    commissioned and is rebooted.
--   device used: esp32c3_devkit_m
--   tested on:
-    [6a244a7](https://github.com/espressif/esp-matter/commit/6a244a7b1e5c70b0aa1bf57254f19718b0755d95)
-    (2022-06-16)
+# Configure project
+idf.py menuconfig  # choose your serial port under "Serial flasher config"
 
-|                         | Bootup | After Commissioning |
-|:-                       |:-:     |:-:                  |
-|**Free Internal Memory** |108KB   |105KB                |
+# Build
+idf.py build
 
-**Flash Usage**: Firmware binary size: 1.26MB
+# Flash to device
+idf.py -p /dev/ttyUSB0 flash monitor
+```
 
-This should give you a good idea about the amount of free memory that is
-available for you to run your application's code.
+## 4. Usage
 
-Applications that do not require BLE post commissioning, can disable it using app_ble_disable() once commissioning is complete. It is not done explicitly because of a known issue with esp32c3 and will be fixed with the next IDF release (v4.4.2).
+1. Power on your Arduino Nano ESP32 with SEN66 sensor wired to I²C.
+2. Upon boot, the device will:
+   - Initialize Matter node
+   - Create an AirQualitySensor endpoint
+   - Start continuous SEN66 measurements every 5 s
+3. Discover the device using any Matter controller; observe clusters:
+   - TemperatureMeasurement
+   - RelativeHumidityMeasurement
+   - Pm1/2.5/10ConcentrationMeasurement
+   - CarbonDioxideConcentrationMeasurement
+   - TotalVolatileOrganicCompoundsConcentrationMeasurement
+   - NitrogenDioxideConcentrationMeasurement
+4. Read `MeasuredValue` attributes to get real‑time sensor data.
+
+## 5. Notes
+
+- The code filters out SEN66 sentinel values (`0x7FFF` for INT16, `0xFFFF` for UINT16) and reports invalid readings as `NAN` or skips updates.
+- Adjust the update interval by modifying `vTaskDelay(pdMS_TO_TICKS(5000))` in `app_main.cpp`.
+
+---
+
+*Happy sensing!*
+
