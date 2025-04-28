@@ -8,6 +8,7 @@ class MatterAirQuality {
     MatterAirQuality(esp_matter::node_t *node);
     void CreateAirQualityEndpoint();
     void StartMeasurements();
+    bool ReadSensor(sen66_data_t *out);
     void UpdateAirQualityAttributes(const sen66_data_t *data);
 
 private:
