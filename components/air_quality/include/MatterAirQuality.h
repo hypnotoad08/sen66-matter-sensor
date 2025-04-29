@@ -9,6 +9,7 @@ class MatterAirQuality {
     void CreateAirQualityEndpoint();
     void StartMeasurements();
     bool ReadSensor(sen66_data_t *out);
+    void SetFloatAttribute(uint16_t endpoint, uint32_t clusterId, uint32_t attributeId, float value);
     void UpdateAirQualityAttributes(const sen66_data_t *data);
 
 private:

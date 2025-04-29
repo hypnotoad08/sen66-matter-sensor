@@ -2,7 +2,13 @@
 #include <esp_log.h>
 #include <common_macros.h>
 #include <cmath>
+#include <map>
 #include "sen66_i2c.h"
+#include "AirQualityClassifier.h"
+
+// Sentinel values for invalid sensor data
+constexpr uint16_t INVALID_UINT16 = 0xFFFF;
+constexpr int16_t INVALID_INT16 = 0x7FFF;
 
 using namespace esp_matter;
 using namespace chip::app::Clusters;
@@ -14,26 +20,6 @@ MatterAirQuality::MatterAirQuality(node_t *node)
   : m_node(node), m_air_quality_endpoint(nullptr)
 {}
 
-enum : int16_t {
-    kGood            = 0,
-    kFair            = 1,
-    kModerate        = 2,
-    kPoor            = 3,
-    kVeryPoor        = 4,
-    kExtremelyPoor   = 5,
-    kUnknown         = 6
-  };
-  
-  static int16_t classify_by_co2(uint16_t co2_ppm) {
-    if      (co2_ppm <= 600)   return kGood;
-    else if (co2_ppm <= 700)   return kFair;
-    else if (co2_ppm <= 800)   return kModerate;
-    else if (co2_ppm <= 950)   return kPoor;
-    else if (co2_ppm <= 1200)  return kVeryPoor;
-    else if (co2_ppm > 1200)   return kExtremelyPoor;
-    else                        return kUnknown;
-  }
-
 void MatterAirQuality::CreateAirQualityEndpoint()
 {
     endpoint::air_quality_sensor::config_t ep_cfg = {};
@@ -43,7 +29,17 @@ void MatterAirQuality::CreateAirQualityEndpoint()
         m_air_quality_endpoint,
         ESP_LOGE(TAG, "Failed to create Air Quality endpoint"));
 
-        cluster_t *aq_cluster = cluster::get(m_air_quality_endpoint, AirQuality::Id);
+    cluster_t *aq_cluster = cluster::get(m_air_quality_endpoint, AirQuality::Id);
+        if (!aq_cluster) {
+            ESP_LOGE(TAG, "Failed to get AirQuality cluster");
+            return;
+        }
+        if (aq_cluster) {
+            esp_matter::cluster::air_quality::feature::fair::add(aq_cluster);
+            esp_matter::cluster::air_quality::feature::moderate::add(aq_cluster);
+            esp_matter::cluster::air_quality::feature::very_poor::add(aq_cluster);
+            esp_matter::cluster::air_quality::feature::extremely_poor::add(aq_cluster);
+        }
         if (!aq_cluster) {
             ESP_LOGE(TAG, "Failed to get AirQuality cluster");
             return;
@@ -160,7 +156,7 @@ void MatterAirQuality::CreateAirQualityEndpoint()
         }
     }
 
-    ESP_LOGI(TAG, "Air Quality endpoint created (with fallback on unsupported features)");
+    ESP_LOGI(TAG, "Air Quality endpoint created successfully. Some features may not be supported and have been skipped.");
 }
 
 
@@ -169,33 +165,41 @@ void MatterAirQuality::StartMeasurements()
     ESP_LOGI(TAG, "MatterAirQuality started");
 }
 
+void MatterAirQuality::SetFloatAttribute(uint16_t endpoint, uint32_t clusterId, uint32_t attributeId, float value)
+{
+    esp_matter_attr_val_t attrValue = esp_matter_float(value);
+    attribute::update(endpoint, clusterId, attributeId, &attrValue);
+}
+
 bool MatterAirQuality::ReadSensor(sen66_data_t *out)
 {
     uint8_t padding;
     bool ready;
-    if (sen66_get_data_ready(&padding, &ready) != 0 || !ready) {
+    int ret = sen66_get_data_ready(&padding, &ready);
+    if (ret != 0) {
+        ESP_LOGW(TAG, "sen66_get_data_ready failed with error code %d", ret);
+        return false;
+    }
+    if (!ready) {
+        ESP_LOGW(TAG, "Sensor data not ready");
         return false;
     }
 
     uint16_t raw_pm1, raw_pm25, raw_pm4, raw_pm10, raw_co2;
     int16_t  raw_hum, raw_temp, raw_voc, raw_nox;
-    int16_t  err = sen66_read_measured_values_as_integers(
+
+    sen66_read_measured_values_as_integers(
         &raw_pm1, &raw_pm25, &raw_pm4, &raw_pm10,
         &raw_hum, &raw_temp, &raw_voc, &raw_nox, &raw_co2);
-    if (err) {
-        ESP_LOGW(TAG, "SEN66 read error %d", err);
-        return false;
-    }
 
-    // convert sentinels to NAN; scale into real units
-    out->pm1_0        = (raw_pm1  != 0xFFFF) ? raw_pm1  / 10.0f : NAN;
-    out->pm2_5        = (raw_pm25 != 0xFFFF) ? raw_pm25 / 10.0f : NAN;
-    out->pm10_0       = (raw_pm10 != 0xFFFF) ? raw_pm10 / 10.0f : NAN;
-    out->humidity     = (raw_hum  != 0x7FFF) ? raw_hum  / 100.0f : NAN;
-    out->temperature  = (raw_temp != 0x7FFF) ? raw_temp / 200.0f : NAN;
-    out->voc_index    = (raw_voc  != 0x7FFF) ? raw_voc  / 10.0f : NAN;
-    out->nox_index    = (raw_nox  != 0x7FFF) ? raw_nox  / 10.0f : NAN;
-    out->co2_equivalent = (raw_co2 != 0xFFFF) ? float(raw_co2) : NAN;
+    out->pm1_0        = (raw_pm1  != INVALID_UINT16) ? raw_pm1  / 10.0f : NAN;
+    out->pm2_5        = (raw_pm25 != INVALID_UINT16) ? raw_pm25 / 10.0f : NAN;
+    out->pm10_0       = (raw_pm10 != INVALID_UINT16) ? raw_pm10 / 10.0f : NAN;
+    out->humidity     = (raw_hum  != INVALID_INT16) ? raw_hum  / 100.0f : NAN;
+    out->temperature  = (raw_temp != INVALID_INT16) ? raw_temp / 200.0f : NAN;
+    out->voc_index    = (raw_voc  != INVALID_INT16) ? raw_voc  / 10.0f : NAN;
+    out->nox_index    = (raw_nox  != INVALID_INT16) ? raw_nox  / 10.0f : NAN;
+    out->co2_equivalent = (raw_co2 != INVALID_UINT16) ? float(raw_co2) : NAN;
 
     return true;
 }
@@ -212,60 +216,60 @@ void MatterAirQuality::UpdateAirQualityAttributes(const sen66_data_t *d)
     if (!std::isnan(d->temperature)) {
         int16_t temp_val = int16_t(d->temperature * 100.0f); // .01°C units
         esp_matter_attr_val_t v = esp_matter_int16(temp_val);
-        attribute::update(ep, TemperatureMeasurement::Id,
-                          TemperatureMeasurement::Attributes::MeasuredValue::Id,
-                          &v);
+        attribute::update(
+            ep,
+            TemperatureMeasurement::Id,
+            TemperatureMeasurement::Attributes::MeasuredValue::Id,
+            &v
+        );
     }
     if (!std::isnan(d->humidity)) {
         int16_t hum_val = int16_t(d->humidity * 100.0f); // .01%RH units
         esp_matter_attr_val_t v = esp_matter_int16(hum_val);
-        attribute::update(ep, RelativeHumidityMeasurement::Id,
-                          RelativeHumidityMeasurement::Attributes::MeasuredValue::Id,
-                          &v);
+        attribute::update(
+            ep,
+            RelativeHumidityMeasurement::Id,
+            RelativeHumidityMeasurement::Attributes::MeasuredValue::Id,
+            &v
+        );
     }
 
-    // FLOAT clusters: CO2, PM1, PM2.5, PM10, VOC, NOx
-    auto setFloat = [&](uint32_t cid, uint32_t aid, float val) {
-        esp_matter_attr_val_t v = esp_matter_float(val);
-        attribute::update(ep, cid, aid, &v);
-    };
 
     if (!std::isnan(d->co2_equivalent)) {
-        setFloat(CarbonDioxideConcentrationMeasurement::Id,
+        SetFloatAttribute(ep,CarbonDioxideConcentrationMeasurement::Id,
                  CarbonDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id,
                  d->co2_equivalent);
     }
     if (!std::isnan(d->pm1_0)) {
-        setFloat(Pm1ConcentrationMeasurement::Id,
+        SetFloatAttribute(ep,Pm1ConcentrationMeasurement::Id,
                  Pm1ConcentrationMeasurement::Attributes::MeasuredValue::Id,
                  d->pm1_0);
     }
     if (!std::isnan(d->pm2_5)) {
-        setFloat(Pm25ConcentrationMeasurement::Id,
+        SetFloatAttribute(ep,Pm25ConcentrationMeasurement::Id,
                  Pm25ConcentrationMeasurement::Attributes::MeasuredValue::Id,
                  d->pm2_5);
     }
     if (!std::isnan(d->pm10_0)) {
-        setFloat(Pm10ConcentrationMeasurement::Id,
-                 Pm10ConcentrationMeasurement::Attributes::MeasuredValue::Id,
-                 d->pm10_0);
+        SetFloatAttribute(ep,
+            Pm10ConcentrationMeasurement::Id,
+            Pm10ConcentrationMeasurement::Attributes::MeasuredValue::Id,
+            d->pm10_0
+        );
     }
     if (!std::isnan(d->voc_index)) {
-        setFloat(TotalVolatileOrganicCompoundsConcentrationMeasurement::Id,
+        SetFloatAttribute(ep,TotalVolatileOrganicCompoundsConcentrationMeasurement::Id,
                  TotalVolatileOrganicCompoundsConcentrationMeasurement::Attributes::MeasuredValue::Id,
                  d->voc_index);
     }
     if (!std::isnan(d->nox_index)) {
-        setFloat(NitrogenDioxideConcentrationMeasurement::Id,
+        SetFloatAttribute(ep,NitrogenDioxideConcentrationMeasurement::Id,
                  NitrogenDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id,
                  d->nox_index);
     }
-    // Air Quality Index
-    int16_t air_quality_index = kUnknown;
-    if (!std::isnan(d->co2_equivalent)) {
-        air_quality_index = classify_by_co2(uint16_t(d->co2_equivalent));
-    }
-    esp_matter_attr_val_t aq_index_val = esp_matter_int16(air_quality_index);
+
+    AirQualityLevel lvl = AirQualityClassifier::classify(d);
+    esp_matter_attr_val_t aq_index_val = esp_matter_int16(lvl);
     attribute::update(ep, AirQuality::Id,
                       AirQuality::Attributes::AirQuality::Id,
                       &aq_index_val);

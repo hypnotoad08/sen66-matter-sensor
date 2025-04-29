@@ -2,6 +2,7 @@
 idf_component_register(
     SRCS
         src/MatterAirQuality.cpp
+        src/AirQualityClassifier.cpp
     INCLUDE_DIRS
         include
         ${ESP_MATTER_PATH}/examples/common/utils
