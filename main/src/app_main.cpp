@@ -64,6 +64,10 @@ if (!node) {
     matterAirQuality->StartMeasurements();
     
         ESP_ERROR_CHECK(esp_matter::start(app_event_cb));
+        ESP_LOGI(TAG, "Matter server started (fabrics: %d)",
+            Server::GetInstance().GetFabricTable().FabricCount());
+        open_commissioning_window_if_necessary();
+        displayMatterInfo();
         sntp_sync();
 
     // Main application loop

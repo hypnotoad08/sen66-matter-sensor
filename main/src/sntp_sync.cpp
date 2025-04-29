@@ -10,7 +10,7 @@ void sntp_sync() {
 
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, "pool.ntp.org");
-    sntp_init();
+    esp_sntp_init();
 
     // Wait for system time to be set
     time_t now = 0;
