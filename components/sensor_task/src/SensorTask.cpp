@@ -1,5 +1,6 @@
 #include "SensorTask.h"
 #include <esp_log.h>
+#include <cmath>
 static const char *TAG = "SensorTask";
 
 SensorTask::SensorTask(MatterAirQuality &aqCluster, uint64_t intervalUs)
@@ -44,12 +45,33 @@ void SensorTask::handleTimer() {
         ESP_LOGW(TAG, "SensorTask: ReadSensor failed");
         return;
     }
+
+     // Check thresholds:
+     bool report = false;
+    if (std::fabs(mLatestData.pm1_0        - mLastPublished.pm1_0)        > kPm10Threshold) report = true;
+    if (std::fabs(mLatestData.pm2_5        - mLastPublished.pm2_5)        > kPm25Threshold) report = true;
+    if (std::fabs(mLatestData.pm10_0       - mLastPublished.pm10_0)       > kPm10Threshold) report = true;
+    if (std::fabs(mLatestData.co2_equivalent - mLastPublished.co2_equivalent) > kCo2Threshold)  report = true;
+    if (std::fabs(mLatestData.voc_index    - mLastPublished.voc_index)    > kVocThreshold)    report = true;
+    if (std::fabs(mLatestData.nox_index    - mLastPublished.nox_index)    > kNoxThreshold)    report = true;
+    if (std::fabs(mLatestData.temperature  - mLastPublished.temperature)  > kTempThreshold)   report = true;
+    if (std::fabs(mLatestData.humidity     - mLastPublished.humidity)     > kHumThreshold)    report = true;
+
+    if (!report) {
+        ESP_LOGD(TAG, "All changes within thresholds; skipping report");
+        return;
+    }
+
     mAqCluster.UpdateAirQualityAttributes(&mLatestData);
-    ESP_LOGI(TAG, "Sensor read: T=%.2f RH=%.2f PM2.5=%.2f CO2=%.2f VOC=%.2f NOx=%.2f",
-        mLatestData.temperature,
-        mLatestData.humidity,
-        mLatestData.pm2_5,
-        mLatestData.co2_equivalent,
-        mLatestData.voc_index,
-        mLatestData.nox_index);
+    mLastPublished = mLatestData; // Update last published data
+    ESP_LOGI(TAG,
+        "Published: ΔPM1=%.1f ΔPM2.5=%.1f ΔPM10=%.1f ΔCO2=%.0f ΔVOC=%.0f ΔNOx=%.0f ΔT=%.1f ΔRH=%.1f",
+        mLatestData.pm1_0        - mLastPublished.pm1_0,
+        mLatestData.pm2_5        - mLastPublished.pm2_5,
+        mLatestData.pm10_0       - mLastPublished.pm10_0,
+        mLatestData.co2_equivalent - mLastPublished.co2_equivalent,
+        mLatestData.voc_index    - mLastPublished.voc_index,
+        mLatestData.nox_index    - mLastPublished.nox_index,
+        mLatestData.temperature  - mLastPublished.temperature,
+        mLatestData.humidity     - mLastPublished.humidity);
 }
