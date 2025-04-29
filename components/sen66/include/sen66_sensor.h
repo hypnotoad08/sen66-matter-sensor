@@ -23,6 +23,7 @@ struct sen66_data_t {
 };
 
 void sen66_i2c_init();
+bool sen66_get_measurement(sen66_data_t *out_data);
 void sen66_start_measurement();
 bool sen66_read_data(sen66_data_t *data);
 

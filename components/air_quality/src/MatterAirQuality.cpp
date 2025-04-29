@@ -173,35 +173,7 @@ void MatterAirQuality::SetFloatAttribute(uint16_t endpoint, uint32_t clusterId, 
 
 bool MatterAirQuality::ReadSensor(sen66_data_t *out)
 {
-    uint8_t padding;
-    bool ready;
-    int ret = sen66_get_data_ready(&padding, &ready);
-    if (ret != 0) {
-        ESP_LOGW(TAG, "sen66_get_data_ready failed with error code %d", ret);
-        return false;
-    }
-    if (!ready) {
-        ESP_LOGW(TAG, "Sensor data not ready");
-        return false;
-    }
-
-    uint16_t raw_pm1, raw_pm25, raw_pm4, raw_pm10, raw_co2;
-    int16_t  raw_hum, raw_temp, raw_voc, raw_nox;
-
-    sen66_read_measured_values_as_integers(
-        &raw_pm1, &raw_pm25, &raw_pm4, &raw_pm10,
-        &raw_hum, &raw_temp, &raw_voc, &raw_nox, &raw_co2);
-
-    out->pm1_0        = (raw_pm1  != INVALID_UINT16) ? raw_pm1  / 10.0f : NAN;
-    out->pm2_5        = (raw_pm25 != INVALID_UINT16) ? raw_pm25 / 10.0f : NAN;
-    out->pm10_0       = (raw_pm10 != INVALID_UINT16) ? raw_pm10 / 10.0f : NAN;
-    out->humidity     = (raw_hum  != INVALID_INT16) ? raw_hum  / 100.0f : NAN;
-    out->temperature  = (raw_temp != INVALID_INT16) ? raw_temp / 200.0f : NAN;
-    out->voc_index    = (raw_voc  != INVALID_INT16) ? raw_voc  / 10.0f : NAN;
-    out->nox_index    = (raw_nox  != INVALID_INT16) ? raw_nox  / 10.0f : NAN;
-    out->co2_equivalent = (raw_co2 != INVALID_UINT16) ? float(raw_co2) : NAN;
-
-    return true;
+    return sen66_get_measurement(out);
 }
 
 void MatterAirQuality::UpdateAirQualityAttributes(const sen66_data_t *d)

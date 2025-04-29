@@ -11,6 +11,7 @@ idf_component_register(
 
   REQUIRES
     air_quality
+    sensor_task
     nvs_flash
     esp_timer
     esp_matter

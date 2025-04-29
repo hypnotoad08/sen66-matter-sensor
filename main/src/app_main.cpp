@@ -1,4 +1,5 @@
 #include "MatterAirQuality.h"
+#include "SensorTask.h"
 #include "sen66_sensor.h"
 #include "factory_reset.h"
 #include "sntp_sync.h"
@@ -27,7 +28,6 @@ using namespace chip;
 static const char *TAG = "main";
 
 static MatterAirQuality *matterAirQuality = nullptr; // Global Matter Air Quality object
-static sen66_data_t g_sen66_data = {0};               // Struct to hold sensor data
 
 
 static void open_commissioning_window_if_necessary();
@@ -70,24 +70,13 @@ if (!node) {
         displayMatterInfo();
         sntp_sync();
 
-    // Main application loop
-    while (true) {
-        if (sen66_read_data(&g_sen66_data)) {
-            ESP_LOGI(TAG, "Sensor read: T=%.2f RH=%.2f PM2.5=%.2f CO2=%.2f VOC=%.2f NOx=%.2f",
-                     g_sen66_data.temperature,
-                     g_sen66_data.humidity,
-                     g_sen66_data.pm2_5,
-                     g_sen66_data.co2_equivalent,
-                     g_sen66_data.voc_index,
-                     g_sen66_data.nox_index);
-
-            // Update Matter attributes
-            matterAirQuality->UpdateAirQualityAttributes(&g_sen66_data);
+        SensorTask sensorTask(*matterAirQuality);
+        sensorTask.start();
+    
+        while (true) {
+            factory_reset_loop();
+            vTaskDelay(pdMS_TO_TICKS(1000));
         }
-
-        factory_reset_loop(); // Check button
-        vTaskDelay(pdMS_TO_TICKS(5000)); // Delay 5 seconds
-    }
 }
 
 //=============================================================================

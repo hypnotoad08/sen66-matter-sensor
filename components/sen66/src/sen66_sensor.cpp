@@ -5,8 +5,13 @@
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <cmath>
 
 static const char *TAG = "SEN66_SENSOR";
+static constexpr TickType_t POLL_PERIOD = pdMS_TO_TICKS(50);
+static constexpr TickType_t MAX_WAIT    = pdMS_TO_TICKS(500);
+constexpr uint16_t INVALID_UINT16 = 0xFFFF;
+constexpr int16_t INVALID_INT16 = 0x7FFF;
 
 void sen66_i2c_init() {
     sensirion_i2c_hal_init();
@@ -24,33 +29,49 @@ void sen66_start_measurement() {
 }
 
 bool sen66_read_data(sen66_data_t *data) {
-    uint16_t pm1p0 = 0;
-    uint16_t pm2p5 = 0;
-    uint16_t pm4p0 = 0; // <- We can discard if unused
-    uint16_t pm10p0 = 0;
-    int16_t humidity = 0;
-    int16_t temperature = 0;
-    int16_t voc = 0;
-    int16_t nox = 0;
-    uint16_t co2 = 0;
 
-    int16_t ret = sen66_read_measured_values_as_integers(
-        &pm1p0, &pm2p5, &pm4p0, &pm10p0,
-        &humidity, &temperature, &voc, &nox, &co2);
-
+    uint8_t padding;
+    bool ready;
+    int ret = sen66_get_data_ready(&padding, &ready);
     if (ret != 0) {
-        ESP_LOGE(TAG, "sen66_read_measured_values_as_integers failed: %d", ret);
+        ESP_LOGW(TAG, "sen66_get_data_ready failed with error code %d", ret);
+        return false;
+    }
+    if (!ready) {
+        ESP_LOGW(TAG, "Sensor data not ready");
         return false;
     }
 
-    data->pm1_0 = pm1p0 / 10.0f;      // PM values scaled by 10
-    data->pm2_5 = pm2p5 / 10.0f;
-    data->pm10_0 = pm10p0 / 10.0f;
-    data->humidity = humidity / 100.0f;      // Humidity scaled by 100
-    data->temperature = temperature / 200.0f; // Temperature scaled by 200
-    data->voc_index = voc / 10.0f;            // VOC scaled by 10
-    data->nox_index = nox / 10.0f;            // NOx scaled by 10
-    data->co2_equivalent = co2;               // CO2 already in ppm
+    uint16_t raw_pm1, raw_pm25, raw_pm4, raw_pm10, raw_co2;
+    int16_t  raw_hum, raw_temp, raw_voc, raw_nox;
+
+    sen66_read_measured_values_as_integers(
+        &raw_pm1, &raw_pm25, &raw_pm4, &raw_pm10,
+        &raw_hum, &raw_temp, &raw_voc, &raw_nox, &raw_co2);
+
+        data->pm1_0        = (raw_pm1  != INVALID_UINT16) ? raw_pm1  / 10.0f : NAN;
+        data->pm2_5        = (raw_pm25 != INVALID_UINT16) ? raw_pm25 / 10.0f : NAN;
+        data->pm10_0       = (raw_pm10 != INVALID_UINT16) ? raw_pm10 / 10.0f : NAN;
+        data->humidity     = (raw_hum  != INVALID_INT16) ? raw_hum  / 100.0f : NAN;
+        data->temperature  = (raw_temp != INVALID_INT16) ? raw_temp / 200.0f : NAN;
+        data->voc_index    = (raw_voc  != INVALID_INT16) ? raw_voc  / 10.0f : NAN;
+        data->nox_index    = (raw_nox  != INVALID_INT16) ? raw_nox  / 10.0f : NAN;
+        data->co2_equivalent = (raw_co2 != INVALID_UINT16) ? float(raw_co2) : NAN;
 
     return true;
+}
+
+bool sen66_get_measurement(sen66_data_t *out_data) {
+    TickType_t elapsed = 0;
+    while (elapsed < MAX_WAIT) {
+        if (sen66_read_data(out_data)) {
+            // ready flag was set and values decoded
+            return true;
+        }
+        vTaskDelay(POLL_PERIOD);
+        elapsed += POLL_PERIOD;
+    }
+
+    ESP_LOGW(TAG, "sen66_get_measurement: timeout waiting for data-ready");
+    return false;
 }
