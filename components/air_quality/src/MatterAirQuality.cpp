@@ -7,11 +7,32 @@
 using namespace esp_matter;
 using namespace chip::app::Clusters;
 
+
 static const char *TAG = "MatterAirQuality";
 
 MatterAirQuality::MatterAirQuality(node_t *node)
   : m_node(node), m_air_quality_endpoint(nullptr)
 {}
+
+enum : int16_t {
+    kGood            = 0,
+    kFair            = 1,
+    kModerate        = 2,
+    kPoor            = 3,
+    kVeryPoor        = 4,
+    kExtremelyPoor   = 5,
+    kUnknown         = 6
+  };
+  
+  static int16_t classify_by_co2(uint16_t co2_ppm) {
+    if      (co2_ppm <= 600)   return kGood;
+    else if (co2_ppm <= 700)   return kFair;
+    else if (co2_ppm <= 800)   return kModerate;
+    else if (co2_ppm <= 950)   return kPoor;
+    else if (co2_ppm <= 1200)  return kVeryPoor;
+    else if (co2_ppm > 1200)   return kExtremelyPoor;
+    else                        return kUnknown;
+  }
 
 void MatterAirQuality::CreateAirQualityEndpoint()
 {
@@ -22,6 +43,16 @@ void MatterAirQuality::CreateAirQualityEndpoint()
         m_air_quality_endpoint,
         ESP_LOGE(TAG, "Failed to create Air Quality endpoint"));
 
+        cluster_t *aq_cluster = cluster::get(m_air_quality_endpoint, AirQuality::Id);
+        if (!aq_cluster) {
+            ESP_LOGE(TAG, "Failed to get AirQuality cluster");
+            return;
+          }
+          esp_matter::cluster::air_quality::feature::fair::add(aq_cluster);
+          esp_matter::cluster::air_quality::feature::moderate ::add(aq_cluster);
+          esp_matter::cluster::air_quality::feature::very_poor::add(aq_cluster);
+          esp_matter::cluster::air_quality::feature::extremely_poor::add(aq_cluster);
+        
     // 2) TemperatureMeasurement (INT16)
     {
         cluster::temperature_measurement::config_t cfg = {};
@@ -229,4 +260,13 @@ void MatterAirQuality::UpdateAirQualityAttributes(const sen66_data_t *d)
                  NitrogenDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id,
                  d->nox_index);
     }
+    // Air Quality Index
+    int16_t air_quality_index = kUnknown;
+    if (!std::isnan(d->co2_equivalent)) {
+        air_quality_index = classify_by_co2(uint16_t(d->co2_equivalent));
+    }
+    esp_matter_attr_val_t aq_index_val = esp_matter_int16(air_quality_index);
+    attribute::update(ep, AirQuality::Id,
+                      AirQuality::Attributes::AirQuality::Id,
+                      &aq_index_val);
 }
