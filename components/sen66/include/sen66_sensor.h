@@ -22,7 +22,7 @@ struct sen66_data_t {
     float    co2_equivalent;      // = raw_co2
 };
 
-void sen66_i2c_init();
+void sen66_i2c_init(uint16_t sensorAltitudeM);
 bool sen66_get_measurement(sen66_data_t *out_data);
 void sen66_start_measurement();
 bool sen66_read_data(sen66_data_t *data);

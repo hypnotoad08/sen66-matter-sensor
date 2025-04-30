@@ -108,7 +108,7 @@ static void initializeNvs()
 static void initializeHardware()
 {
     ESP_LOGI(TAG, "Initializing hardware");
-    sen66_i2c_init();
+    sen66_i2c_init(200); // Set sensor altitude to 200 meters
     sen66_start_measurement();
     factory_reset_init();
 }

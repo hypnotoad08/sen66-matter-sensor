@@ -13,10 +13,17 @@ static constexpr TickType_t MAX_WAIT    = pdMS_TO_TICKS(500);
 constexpr uint16_t INVALID_UINT16 = 0xFFFF;
 constexpr int16_t INVALID_INT16 = 0x7FFF;
 
-void sen66_i2c_init() {
+void sen66_i2c_init(uint16_t sensorAltitudeM) {
     sensirion_i2c_hal_init();
     sen66_init(SEN66_I2C_ADDR_6B);
     sensirion_i2c_hal_sleep_usec(20000); // Wait 20ms after powering up
+
+    int16_t ret = sen66_set_sensor_altitude(sensorAltitudeM);
+    if (ret) {
+        ESP_LOGE(TAG, "sen66_set_sensor_altitude(%u m) failed: %d", sensorAltitudeM, ret);
+    } else {
+        ESP_LOGI(TAG, "Sensor altitude set to %u m", sensorAltitudeM);
+    }
 }
 
 void sen66_start_measurement() {
