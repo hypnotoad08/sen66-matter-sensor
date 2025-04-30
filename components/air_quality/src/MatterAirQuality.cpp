@@ -5,6 +5,9 @@
 #include <map>
 #include "sen66_i2c.h"
 #include "AirQualityClassifier.h"
+#include <esp_matter.h>
+#include <esp_matter_attribute.h>
+
 
 // Sentinel values for invalid sensor data
 constexpr uint16_t INVALID_UINT16 = 0xFFFF;
@@ -43,8 +46,6 @@ using namespace chip::app::Clusters;
     }                                                                                 \
   } while (0)
 
-
-
 MatterAirQuality::MatterAirQuality(node_t *node)
     : m_node(node), m_air_quality_endpoint(nullptr) {}
 
@@ -65,12 +66,6 @@ void MatterAirQuality::CreateAirQualityEndpoint()
 void MatterAirQuality::StartMeasurements()
 {
     ESP_LOGI(TAG, "MatterAirQuality started");
-}
-
-void MatterAirQuality::SetFloatAttribute(uint16_t endpoint, uint32_t clusterId, uint32_t attributeId, float value)
-{
-    esp_matter_attr_val_t attrValue = esp_matter_float(value);
-    attribute::update(endpoint, clusterId, attributeId, &attrValue);
 }
 
 bool MatterAirQuality::ReadSensor(sen66_data_t *out)
@@ -167,41 +162,98 @@ void MatterAirQuality::UpdateTemperatureAndHumidity(uint16_t endpointId, const s
 void MatterAirQuality::UpdateConcentrationMeasurements(uint16_t endpointId, const sen66_data_t *data)
 {
     if (!std::isnan(data->co2_equivalent)) {
-        SetFloatAttribute(endpointId, CarbonDioxideConcentrationMeasurement::Id,
-                          CarbonDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id, data->co2_equivalent);
+        UpdateAttribute(endpointId, CarbonDioxideConcentrationMeasurement::Id,
+                        CarbonDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id, data->co2_equivalent);
     }
     if (!std::isnan(data->pm1_0)) {
-        SetFloatAttribute(endpointId, Pm1ConcentrationMeasurement::Id,
-                          Pm1ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm1_0);
+        UpdateAttribute(endpointId, Pm1ConcentrationMeasurement::Id,
+                        Pm1ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm1_0);
     }
     if (!std::isnan(data->pm2_5)) {
-        SetFloatAttribute(endpointId, Pm25ConcentrationMeasurement::Id,
-                          Pm25ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm2_5);
+        UpdateAttribute(endpointId, Pm25ConcentrationMeasurement::Id,
+                        Pm25ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm2_5);
     }
     if (!std::isnan(data->pm10_0)) {
-        SetFloatAttribute(endpointId, Pm10ConcentrationMeasurement::Id,
-                          Pm10ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm10_0);
+        UpdateAttribute(endpointId, Pm10ConcentrationMeasurement::Id,
+                        Pm10ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm10_0);
     }
     if (!std::isnan(data->voc_index)) {
-        SetFloatAttribute(endpointId, TotalVolatileOrganicCompoundsConcentrationMeasurement::Id,
-                          TotalVolatileOrganicCompoundsConcentrationMeasurement::Attributes::MeasuredValue::Id, data->voc_index);
+        UpdateAttribute(endpointId, TotalVolatileOrganicCompoundsConcentrationMeasurement::Id,
+                        TotalVolatileOrganicCompoundsConcentrationMeasurement::Attributes::MeasuredValue::Id, data->voc_index);
     }
     if (!std::isnan(data->nox_index)) {
-        SetFloatAttribute(endpointId, NitrogenDioxideConcentrationMeasurement::Id,
-                          NitrogenDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id, data->nox_index);
+        UpdateAttribute(endpointId, NitrogenDioxideConcentrationMeasurement::Id,
+                        NitrogenDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id, data->nox_index);
     }
 }
 
 void MatterAirQuality::UpdateAirQualityLevel(uint16_t endpointId, const sen66_data_t *data)
 {
     AirQualityLevel level = AirQualityClassifier::classify(data);
-    esp_matter_attr_val_t aq_index_val = esp_matter_int16(level);
-    attribute::update(endpointId, AirQuality::Id, AirQuality::Attributes::AirQuality::Id, &aq_index_val);
+    UpdateAttribute(endpointId, AirQuality::Id, AirQuality::Attributes::AirQuality::Id, static_cast<int16_t>(level));
 }
 
-template <typename T>
-void MatterAirQuality::UpdateAttribute(uint16_t endpointId, uint32_t clusterId, uint32_t attributeId, T value)
+//------------------------------------------------------------------------------
+// Attribute Update Helper
+//------------------------------------------------------------------------------
+template<typename T>
+void MatterAirQuality::UpdateAttribute(uint16_t endpointId,
+                                       uint32_t clusterId,
+                                       uint32_t attributeId,
+                                       T newValue)
 {
-    esp_matter_attr_val_t attrValue = esp_matter_int16(value);
-    attribute::update(endpointId, clusterId, attributeId, &attrValue);
+    attribute_t *attr = attribute::get(endpointId, clusterId, attributeId);
+    if (!attr) {
+        ESP_LOGW(TAG, "Attr not found ep=%u cl=0x%08X attr=0x%08X",
+                 static_cast<unsigned>(endpointId),
+                 static_cast<unsigned>(clusterId),
+                 static_cast<unsigned>(attributeId));
+        return;
+    }
+
+    esp_matter_attr_val_t currentVal{};
+    if (attribute::get_val(attr, &currentVal) != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to read current attribute value");
+        return;
+    }
+
+    T oldValue;
+    if constexpr (std::is_same_v<T, float>) {
+        oldValue = currentVal.val.f;
+    } else if constexpr (std::is_same_v<T, int16_t>) {
+        oldValue = currentVal.val.i16;
+    } else if constexpr (std::is_same_v<T, uint16_t>) {
+        oldValue = currentVal.val.u16;
+    } else if constexpr (std::is_same_v<T, int32_t>) {
+        oldValue = currentVal.val.i32;
+    } else if constexpr (std::is_same_v<T, uint32_t>) {
+        oldValue = currentVal.val.u32;
+    } else if constexpr (std::is_same_v<T, bool>) {
+        oldValue = currentVal.val.b;
+    } else {
+        oldValue = static_cast<T>(currentVal.val.u32);
+    }
+
+    if (oldValue == newValue) {
+        return;
+    }
+
+    esp_matter_attr_val_t toWrite{};
+    if constexpr (std::is_same_v<T, float>) {
+        toWrite = esp_matter_float(newValue);
+    } else if constexpr (std::is_same_v<T, int16_t>) {
+        toWrite = esp_matter_int16(newValue);
+    } else if constexpr (std::is_same_v<T, uint16_t>) {
+        toWrite = esp_matter_uint16(newValue);
+    } else if constexpr (std::is_same_v<T, int32_t>) {
+        toWrite = esp_matter_int(newValue);
+    } else if constexpr (std::is_same_v<T, uint32_t>) {
+        toWrite = esp_matter_uint32(newValue);
+    } else if constexpr (std::is_same_v<T, bool>) {
+        toWrite = esp_matter_bool(newValue);
+    } else {
+        toWrite = esp_matter_uint32(static_cast<uint32_t>(newValue));
+    }
+
+    attribute::update(endpointId, clusterId, attributeId, &toWrite);
 }
