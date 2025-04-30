@@ -62,16 +62,17 @@ void SensorTask::handleTimer() {
         return;
     }
 
+    sen66_data_t old = mLastPublished;
     mAqCluster.UpdateAirQualityAttributes(&mLatestData);
     mLastPublished = mLatestData; // Update last published data
     ESP_LOGI(TAG,
         "Published: ΔPM1=%.1f ΔPM2.5=%.1f ΔPM10=%.1f ΔCO2=%.0f ΔVOC=%.0f ΔNOx=%.0f ΔT=%.1f ΔRH=%.1f",
-        mLatestData.pm1_0        - mLastPublished.pm1_0,
-        mLatestData.pm2_5        - mLastPublished.pm2_5,
-        mLatestData.pm10_0       - mLastPublished.pm10_0,
-        mLatestData.co2_equivalent - mLastPublished.co2_equivalent,
-        mLatestData.voc_index    - mLastPublished.voc_index,
-        mLatestData.nox_index    - mLastPublished.nox_index,
-        mLatestData.temperature  - mLastPublished.temperature,
-        mLatestData.humidity     - mLastPublished.humidity);
+        mLatestData.pm1_0        - old.pm1_0,
+        mLatestData.pm2_5        - old.pm2_5,
+        mLatestData.pm10_0       - old.pm10_0,
+        mLatestData.co2_equivalent - old.co2_equivalent,
+        mLatestData.voc_index    - old.voc_index,
+        mLatestData.nox_index    - old.nox_index,
+        mLatestData.temperature  - old.temperature,
+        mLatestData.humidity     - old.humidity);
 }
