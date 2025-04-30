@@ -7,8 +7,8 @@
 
 static const char *TAG = "SensorTask";
 
-static const char* NVS_NAMESPACE = "aq_task";
-static const char* NVS_KEY_LAST = "lastValues";
+static const char *NVS_NAMESPACE = "aq_task";
+static const char *NVS_KEY_LAST = "lastValues";
 
 SensorTask::SensorTask(MatterAirQuality &aqCluster, uint64_t intervalUs)
     : mAqCluster(aqCluster),
@@ -16,17 +16,19 @@ SensorTask::SensorTask(MatterAirQuality &aqCluster, uint64_t intervalUs)
       mTimer(nullptr)
 {
 
-     // Open our namespace
-     nvs_handle handle;
-     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) == ESP_OK) {
-         size_t required = sizeof(mLastPublished);
-         // Try to read the blob of the same size as our struct
-         if (nvs_get_blob(handle, NVS_KEY_LAST, &mLastPublished, &required) != ESP_OK) {
-             // No saved data yet — start fresh at zero
-             memset(&mLastPublished, 0, sizeof(mLastPublished));
-         }
-         nvs_close(handle);
-     }
+    // Open our namespace
+    nvs_handle handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) == ESP_OK)
+    {
+        size_t required = sizeof(mLastPublished);
+        // Try to read the blob of the same size as our struct
+        if (nvs_get_blob(handle, NVS_KEY_LAST, &mLastPublished, &required) != ESP_OK)
+        {
+            // No saved data yet — start fresh at zero
+            memset(&mLastPublished, 0, sizeof(mLastPublished));
+        }
+        nvs_close(handle);
+    }
 
     // Prepare the esp_timer (but don’t start it yet)
     esp_timer_create_args_t args = {
@@ -69,6 +71,19 @@ void SensorTask::handleTimer()
     if (!mAqCluster.ReadSensor(&mLatestData))
     {
         ESP_LOGW(TAG, "SensorTask: ReadSensor failed");
+        return;
+    }
+
+    if (!std::isfinite(mLatestData.pm1_0) ||
+        !std::isfinite(mLatestData.pm2_5) ||
+        !std::isfinite(mLatestData.pm10_0) ||
+        !std::isfinite(mLatestData.co2_equivalent) ||
+        !std::isfinite(mLatestData.voc_index) ||
+        !std::isfinite(mLatestData.nox_index) ||
+        !std::isfinite(mLatestData.temperature) ||
+        !std::isfinite(mLatestData.humidity))
+    {
+        ESP_LOGW(TAG, "SensorTask: Invalid reading(s) detected, skipping this cycle");
         return;
     }
 
@@ -128,17 +143,21 @@ void SensorTask::logChanges(const sen66_data_t &smooth, const sen66_data_t &old)
 void SensorTask::saveLastPublishedToNVS() const
 {
     nvs_handle handle;
-    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK)
+    {
         ESP_LOGW(TAG, "Failed to open NVS namespace");
         return;
     }
     // Write the whole struct as a blob
     esp_err_t err = nvs_set_blob(handle, NVS_KEY_LAST,
-                                  &mLastPublished,
-                                  sizeof(mLastPublished));
-    if (err == ESP_OK) {
+                                 &mLastPublished,
+                                 sizeof(mLastPublished));
+    if (err == ESP_OK)
+    {
         nvs_commit(handle);
-    } else {
+    }
+    else
+    {
         ESP_LOGW(TAG, "Failed to write lastPublished to NVS (%d)", err);
     }
     nvs_close(handle);
