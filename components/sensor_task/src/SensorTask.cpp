@@ -9,10 +9,8 @@ SensorTask::SensorTask(MatterAirQuality &aqCluster, uint64_t intervalUs)
     : mAqCluster(aqCluster),
       mIntervalUs(intervalUs),
       mTimer(nullptr)
-
 {
-
-    // prepare the esp_timer (but don’t start it yet)
+    // Prepare the esp_timer (but don’t start it yet)
     esp_timer_create_args_t args = {
         .callback = &SensorTask::timerCallback,
         .arg = this,
@@ -57,6 +55,21 @@ void SensorTask::handleTimer()
     }
 
     sen66_data_t smooth;
+    smoothSensorData(smooth);
+
+    if (!shouldReport(smooth))
+    {
+        ESP_LOGD(TAG, "All changes within thresholds; skipping report");
+        return;
+    }
+
+    logChanges(smooth, mLastPublished);
+    mAqCluster.UpdateAirQualityAttributes(&smooth);
+    mLastPublished = smooth; // Update last published data
+}
+
+void SensorTask::smoothSensorData(sen66_data_t &smooth)
+{
     smooth.co2_equivalent = mLatestData.co2_equivalent;
     smooth.voc_index = mLatestData.voc_index;
     smooth.nox_index = mLatestData.nox_index;
@@ -65,35 +78,22 @@ void SensorTask::handleTimer()
     smooth.pm1_0 = pm1_filter.addSample(mLatestData.pm1_0);
     smooth.pm2_5 = pm25_filter.addSample(mLatestData.pm2_5);
     smooth.pm10_0 = pm10_filter.addSample(mLatestData.pm10_0);
+}
 
-    // Check thresholds:
-    bool report = false;
-    if (std::fabs(smooth.pm1_0 - mLastPublished.pm1_0) > kPm10Threshold)
-        report = true;
-    if (std::fabs(smooth.pm2_5 - mLastPublished.pm2_5) > kPm25Threshold)
-        report = true;
-    if (std::fabs(smooth.pm10_0 - mLastPublished.pm10_0) > kPm10Threshold)
-        report = true;
-    if (std::fabs(smooth.co2_equivalent - mLastPublished.co2_equivalent) > kCo2Threshold)
-        report = true;
-    if (std::fabs(smooth.voc_index - mLastPublished.voc_index) > kVocThreshold)
-        report = true;
-    if (std::fabs(smooth.nox_index - mLastPublished.nox_index) > kNoxThreshold)
-        report = true;
-    if (std::fabs(smooth.temperature - mLastPublished.temperature) > kTempThreshold)
-        report = true;
-    if (std::fabs(smooth.humidity - mLastPublished.humidity) > kHumThreshold)
-        report = true;
+bool SensorTask::shouldReport(const sen66_data_t &smooth) const
+{
+    return std::fabs(smooth.pm1_0 - mLastPublished.pm1_0) > kPm10Threshold ||
+           std::fabs(smooth.pm2_5 - mLastPublished.pm2_5) > kPm25Threshold ||
+           std::fabs(smooth.pm10_0 - mLastPublished.pm10_0) > kPm10Threshold ||
+           std::fabs(smooth.co2_equivalent - mLastPublished.co2_equivalent) > kCo2Threshold ||
+           std::fabs(smooth.voc_index - mLastPublished.voc_index) > kVocThreshold ||
+           std::fabs(smooth.nox_index - mLastPublished.nox_index) > kNoxThreshold ||
+           std::fabs(smooth.temperature - mLastPublished.temperature) > kTempThreshold ||
+           std::fabs(smooth.humidity - mLastPublished.humidity) > kHumThreshold;
+}
 
-    if (!report)
-    {
-        ESP_LOGD(TAG, "All changes within thresholds; skipping report");
-        return;
-    }
-
-    sen66_data_t old = mLastPublished;
-    mAqCluster.UpdateAirQualityAttributes(&smooth);
-    mLastPublished = smooth; // Update last published data
+void SensorTask::logChanges(const sen66_data_t &smooth, const sen66_data_t &old) const
+{
     ESP_LOGI(TAG,
              "Published: ΔPM1=%.1f ΔPM2.5=%.1f ΔPM10=%.1f ΔCO2=%.0f ΔVOC=%.0f ΔNOx=%.0f ΔT=%.1f ΔRH=%.1f",
              smooth.pm1_0 - old.pm1_0,

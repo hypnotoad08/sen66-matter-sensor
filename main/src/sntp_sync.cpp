@@ -5,9 +5,14 @@
 
 static const char *TAG = "sntp";
 
-void sntp_sync() {
+// Constants for retry logic
+constexpr int RETRY_COUNT = 10;
+constexpr int RETRY_DELAY_MS = 2000;
+
+bool sntp_sync() {
     ESP_LOGI(TAG, "Initializing SNTP");
 
+    // Configure SNTP
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, "pool.ntp.org");
     esp_sntp_init();
@@ -16,18 +21,20 @@ void sntp_sync() {
     time_t now = 0;
     struct tm timeinfo = { 0 };
     int retry = 0;
-    const int retry_count = 10;
 
-    while (timeinfo.tm_year < (2016 - 1900) && ++retry < retry_count) {
-        ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    while (timeinfo.tm_year < (2016 - 1900) && retry < RETRY_COUNT) {
+        ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry + 1, RETRY_COUNT);
+        vTaskDelay(RETRY_DELAY_MS / portTICK_PERIOD_MS);
         time(&now);
         localtime_r(&now, &timeinfo);
+        retry++;
     }
 
     if (timeinfo.tm_year >= (2016 - 1900)) {
         ESP_LOGI(TAG, "Time synchronized: %s", asctime(&timeinfo));
+        return true; // Synchronization successful
     } else {
-        ESP_LOGW(TAG, "Failed to synchronize time after %d retries", retry_count);
+        ESP_LOGW(TAG, "Failed to synchronize time after %d retries", RETRY_COUNT);
+        return false; // Synchronization failed
     }
 }

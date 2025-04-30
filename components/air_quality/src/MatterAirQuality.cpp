@@ -10,155 +10,57 @@
 constexpr uint16_t INVALID_UINT16 = 0xFFFF;
 constexpr int16_t INVALID_INT16 = 0x7FFF;
 
+static const char *TAG = "MatterAirQuality";
+
 using namespace esp_matter;
 using namespace chip::app::Clusters;
 
+//------------------------------------------------------------------------------
+// Helper to create a “ConcentrationMeasurement” cluster + its NumericMeasurement
+//------------------------------------------------------------------------------
+#define ADD_MEASUREMENT_CLUSTER(EspClusterNS, ChipCluster, MED, UNIT)                 \
+  do {                                                                                \
+    /* 1) build & create the base cluster */                                         \
+    esp_matter::cluster::EspClusterNS::config_t cfg{};                                \
+    cfg.measurement_medium =                                                           \
+      static_cast<uint8_t>(ChipCluster::MeasurementMediumEnum::MED);                  \
+    cluster_t * cl = esp_matter::cluster::EspClusterNS::create(                       \
+      m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER                               \
+    );                                                                                \
+    ABORT_APP_ON_FAILURE( cl,                                                         \
+      ESP_LOGE(TAG, "Failed to create " #EspClusterNS)                                \
+    );                                                                                \
+                                                                                      \
+    /* 2) add the NumericMeasurement feature */                                 \
+    esp_matter::cluster::EspClusterNS::feature::numeric_measurement::config_t num_cfg{}; \
+    num_cfg.measurement_unit =                                                        \
+      static_cast<uint8_t>(ChipCluster::MeasurementUnitEnum::UNIT);                   \
+    esp_err_t err = esp_matter::cluster::EspClusterNS::feature::numeric_measurement::add( \
+      cl, &num_cfg                                                                    \
+    );                                                                                \
+    if (err != ESP_OK) {                                                              \
+      ESP_LOGW(TAG, #EspClusterNS " MEA unsupported (0x%X)", err);                    \
+    }                                                                                 \
+  } while (0)
 
-static const char *TAG = "MatterAirQuality";
+
 
 MatterAirQuality::MatterAirQuality(node_t *node)
-  : m_node(node), m_air_quality_endpoint(nullptr)
-{}
+    : m_node(node), m_air_quality_endpoint(nullptr) {}
 
 void MatterAirQuality::CreateAirQualityEndpoint()
 {
-    endpoint::air_quality_sensor::config_t ep_cfg = {};
-    m_air_quality_endpoint = endpoint::air_quality_sensor::create(
-        m_node, &ep_cfg, ENDPOINT_FLAG_DESTROYABLE, nullptr);
-    ABORT_APP_ON_FAILURE(
-        m_air_quality_endpoint,
-        ESP_LOGE(TAG, "Failed to create Air Quality endpoint"));
-
-    cluster_t *aq_cluster = cluster::get(m_air_quality_endpoint, AirQuality::Id);
-        if (!aq_cluster) {
-            ESP_LOGE(TAG, "Failed to get AirQuality cluster");
-            return;
-        }
-        if (aq_cluster) {
-            esp_matter::cluster::air_quality::feature::fair::add(aq_cluster);
-            esp_matter::cluster::air_quality::feature::moderate::add(aq_cluster);
-            esp_matter::cluster::air_quality::feature::very_poor::add(aq_cluster);
-            esp_matter::cluster::air_quality::feature::extremely_poor::add(aq_cluster);
-        }
-        if (!aq_cluster) {
-            ESP_LOGE(TAG, "Failed to get AirQuality cluster");
-            return;
-          }
-          esp_matter::cluster::air_quality::feature::fair::add(aq_cluster);
-          esp_matter::cluster::air_quality::feature::moderate ::add(aq_cluster);
-          esp_matter::cluster::air_quality::feature::very_poor::add(aq_cluster);
-          esp_matter::cluster::air_quality::feature::extremely_poor::add(aq_cluster);
-        
-    // 2) TemperatureMeasurement (INT16)
-    {
-        cluster::temperature_measurement::config_t cfg = {};
-        ABORT_APP_ON_FAILURE(
-            cluster::temperature_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER),
-            ESP_LOGE(TAG, "Failed to create TemperatureMeasurement"));
+    if (!InitializeEndpoint()) {
+        ESP_LOGE(TAG, "Failed to initialize Air Quality endpoint");
+        return;
     }
 
-    // 3) RelativeHumidityMeasurement (INT16)
-    {
-        cluster::relative_humidity_measurement::config_t cfg = {};
-        ABORT_APP_ON_FAILURE(
-            cluster::relative_humidity_measurement::create(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER),
-            ESP_LOGE(TAG, "Failed to create RelativeHumidityMeasurement"));
-    }
-
-    // Carbon Dioxide
-    {
-        cluster::carbon_dioxide_concentration_measurement::config_t cfg = {};
-        cluster_t *co2_cluster = cluster::carbon_dioxide_concentration_measurement::create(
-            m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
-        ABORT_APP_ON_FAILURE(co2_cluster, ESP_LOGE(TAG, "Failed to create CO2 cluster"));
-
-        // <-- allocate a real config_t on the stack, then pass &num_cfg
-        cluster::carbon_dioxide_concentration_measurement::feature::numeric_measurement::config_t num_cfg = {};
-        esp_err_t err = cluster::carbon_dioxide_concentration_measurement::feature::numeric_measurement::add(
-            co2_cluster, &num_cfg);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "CO2 NumericMeasurement unsupported (0x%X)", err);
-        }
-    }
-
-    // PM1.0
-    {
-        cluster::pm1_concentration_measurement::config_t cfg = {};
-        cluster_t *pm1_cluster = cluster::pm1_concentration_measurement::create(
-            m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
-        ABORT_APP_ON_FAILURE(pm1_cluster, ESP_LOGE(TAG, "Failed to create PM1 cluster"));
-
-        cluster::pm1_concentration_measurement::feature::numeric_measurement::config_t num_cfg = {};
-        esp_err_t err = cluster::pm1_concentration_measurement::feature::numeric_measurement::add(
-            pm1_cluster, &num_cfg);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "PM1 NumericMeasurement unsupported (0x%X)", err);
-        }
-    }
-
-    // PM2.5
-    {
-        cluster::pm25_concentration_measurement::config_t cfg = {};
-        cluster_t *pm25_cluster = cluster::pm25_concentration_measurement::create(
-            m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
-        ABORT_APP_ON_FAILURE(pm25_cluster, ESP_LOGE(TAG, "Failed to create PM2.5 cluster"));
-
-        cluster::pm25_concentration_measurement::feature::numeric_measurement::config_t num_cfg = {};
-        esp_err_t err = cluster::pm25_concentration_measurement::feature::numeric_measurement::add(
-            pm25_cluster, &num_cfg);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "PM2.5 NumericMeasurement unsupported (0x%X)", err);
-        }
-    }
-
-    // PM10
-    {
-        cluster::pm10_concentration_measurement::config_t cfg = {};
-        cluster_t *pm10_cluster = cluster::pm10_concentration_measurement::create(
-            m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
-        ABORT_APP_ON_FAILURE(pm10_cluster, ESP_LOGE(TAG, "Failed to create PM10 cluster"));
-
-        cluster::pm10_concentration_measurement::feature::numeric_measurement::config_t num_cfg = {};
-        esp_err_t err = cluster::pm10_concentration_measurement::feature::numeric_measurement::add(
-            pm10_cluster, &num_cfg);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "PM10 NumericMeasurement unsupported (0x%X)", err);
-        }
-    }
-
-    // TVOC
-    {
-        cluster::total_volatile_organic_compounds_concentration_measurement::config_t cfg = {};
-        cluster_t *voc_cluster = cluster::total_volatile_organic_compounds_concentration_measurement::create(
-            m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
-        ABORT_APP_ON_FAILURE(voc_cluster, ESP_LOGE(TAG, "Failed to create TVOC cluster"));
-
-        cluster::total_volatile_organic_compounds_concentration_measurement::feature::numeric_measurement::config_t num_cfg = {};
-        esp_err_t err = cluster::total_volatile_organic_compounds_concentration_measurement::feature::numeric_measurement::add(
-            voc_cluster, &num_cfg);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "TVOC NumericMeasurement unsupported (0x%X)", err);
-        }
-    }
-
-    // NOx
-    {
-        cluster::nitrogen_dioxide_concentration_measurement::config_t cfg = {};
-        cluster_t *nox_cluster = cluster::nitrogen_dioxide_concentration_measurement::create(
-            m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER);
-        ABORT_APP_ON_FAILURE(nox_cluster, ESP_LOGE(TAG, "Failed to create NOx cluster"));
-
-        cluster::nitrogen_dioxide_concentration_measurement::feature::numeric_measurement::config_t num_cfg = {};
-        esp_err_t err = cluster::nitrogen_dioxide_concentration_measurement::feature::numeric_measurement::add(
-            nox_cluster, &num_cfg);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "NOx NumericMeasurement unsupported (0x%X)", err);
-        }
-    }
+    AddAirQualityFeatures();
+    AddStandardMeasurementClusters();
+    AddCustomMeasurementClusters();
 
     ESP_LOGI(TAG, "Air Quality endpoint created successfully. Some features may not be supported and have been skipped.");
 }
-
 
 void MatterAirQuality::StartMeasurements()
 {
@@ -176,73 +78,130 @@ bool MatterAirQuality::ReadSensor(sen66_data_t *out)
     return sen66_get_measurement(out);
 }
 
-void MatterAirQuality::UpdateAirQualityAttributes(const sen66_data_t *d)
+void MatterAirQuality::UpdateAirQualityAttributes(const sen66_data_t *data)
 {
     if (!m_air_quality_endpoint) {
         ESP_LOGW(TAG, "AQ endpoint not initialized");
         return;
     }
-    uint16_t ep = endpoint::get_id(m_air_quality_endpoint);
 
-    // INT16 clusters: Temperature & Humidity
-    if (!std::isnan(d->temperature)) {
-        int16_t temp_val = int16_t(d->temperature * 100.0f); // .01°C units
-        esp_matter_attr_val_t v = esp_matter_int16(temp_val);
-        attribute::update(
-            ep,
-            TemperatureMeasurement::Id,
-            TemperatureMeasurement::Attributes::MeasuredValue::Id,
-            &v
-        );
-    }
-    if (!std::isnan(d->humidity)) {
-        int16_t hum_val = int16_t(d->humidity * 100.0f); // .01%RH units
-        esp_matter_attr_val_t v = esp_matter_int16(hum_val);
-        attribute::update(
-            ep,
-            RelativeHumidityMeasurement::Id,
-            RelativeHumidityMeasurement::Attributes::MeasuredValue::Id,
-            &v
-        );
-    }
+    uint16_t endpointId = endpoint::get_id(m_air_quality_endpoint);
 
+    UpdateTemperatureAndHumidity(endpointId, data);
+    UpdateConcentrationMeasurements(endpointId, data);
+    UpdateAirQualityLevel(endpointId, data);
+}
 
-    if (!std::isnan(d->co2_equivalent)) {
-        SetFloatAttribute(ep,CarbonDioxideConcentrationMeasurement::Id,
-                 CarbonDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id,
-                 d->co2_equivalent);
+//------------------------------------------------------------------------------
+// Private Methods
+//------------------------------------------------------------------------------
+
+bool MatterAirQuality::InitializeEndpoint()
+{
+    endpoint::air_quality_sensor::config_t ep_cfg = {};
+    m_air_quality_endpoint = endpoint::air_quality_sensor::create(
+        m_node, &ep_cfg, ENDPOINT_FLAG_DESTROYABLE, nullptr);
+
+    if (!m_air_quality_endpoint) {
+        ESP_LOGE(TAG, "Failed to create Air Quality endpoint");
+        return false;
     }
-    if (!std::isnan(d->pm1_0)) {
-        SetFloatAttribute(ep,Pm1ConcentrationMeasurement::Id,
-                 Pm1ConcentrationMeasurement::Attributes::MeasuredValue::Id,
-                 d->pm1_0);
-    }
-    if (!std::isnan(d->pm2_5)) {
-        SetFloatAttribute(ep,Pm25ConcentrationMeasurement::Id,
-                 Pm25ConcentrationMeasurement::Attributes::MeasuredValue::Id,
-                 d->pm2_5);
-    }
-    if (!std::isnan(d->pm10_0)) {
-        SetFloatAttribute(ep,
-            Pm10ConcentrationMeasurement::Id,
-            Pm10ConcentrationMeasurement::Attributes::MeasuredValue::Id,
-            d->pm10_0
-        );
-    }
-    if (!std::isnan(d->voc_index)) {
-        SetFloatAttribute(ep,TotalVolatileOrganicCompoundsConcentrationMeasurement::Id,
-                 TotalVolatileOrganicCompoundsConcentrationMeasurement::Attributes::MeasuredValue::Id,
-                 d->voc_index);
-    }
-    if (!std::isnan(d->nox_index)) {
-        SetFloatAttribute(ep,NitrogenDioxideConcentrationMeasurement::Id,
-                 NitrogenDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id,
-                 d->nox_index);
+    return true;
+}
+
+void MatterAirQuality::AddAirQualityFeatures()
+{
+    cluster_t *aq_cluster = cluster::get(m_air_quality_endpoint, AirQuality::Id);
+    if (!aq_cluster) {
+        ESP_LOGE(TAG, "Failed to get AirQuality cluster");
+        return;
     }
 
-    AirQualityLevel lvl = AirQualityClassifier::classify(d);
-    esp_matter_attr_val_t aq_index_val = esp_matter_int16(lvl);
-    attribute::update(ep, AirQuality::Id,
-                      AirQuality::Attributes::AirQuality::Id,
-                      &aq_index_val);
+    esp_matter::cluster::air_quality::feature::fair::add(aq_cluster);
+    esp_matter::cluster::air_quality::feature::moderate::add(aq_cluster);
+    esp_matter::cluster::air_quality::feature::very_poor::add(aq_cluster);
+    esp_matter::cluster::air_quality::feature::extremely_poor::add(aq_cluster);
+}
+
+void MatterAirQuality::AddStandardMeasurementClusters()
+{
+    AddCluster<cluster::temperature_measurement::config_t>(
+        cluster::temperature_measurement::create, "TemperatureMeasurement");
+
+    AddCluster<cluster::relative_humidity_measurement::config_t>(
+        cluster::relative_humidity_measurement::create, "RelativeHumidityMeasurement");
+}
+
+void MatterAirQuality::AddCustomMeasurementClusters()
+{
+    ADD_MEASUREMENT_CLUSTER(pm1_concentration_measurement, Pm1ConcentrationMeasurement, kAir, kUgm3);
+    ADD_MEASUREMENT_CLUSTER(pm25_concentration_measurement, Pm25ConcentrationMeasurement, kAir, kUgm3);
+    ADD_MEASUREMENT_CLUSTER(pm10_concentration_measurement, Pm10ConcentrationMeasurement, kAir, kUgm3);
+    ADD_MEASUREMENT_CLUSTER(total_volatile_organic_compounds_concentration_measurement, TotalVolatileOrganicCompoundsConcentrationMeasurement, kAir, kPpm);
+    ADD_MEASUREMENT_CLUSTER(carbon_dioxide_concentration_measurement, CarbonDioxideConcentrationMeasurement, kAir, kPpm);
+    ADD_MEASUREMENT_CLUSTER(nitrogen_dioxide_concentration_measurement, NitrogenDioxideConcentrationMeasurement, kAir, kPpm);
+}
+
+template <typename ConfigType>
+void MatterAirQuality::AddCluster(std::function<cluster_t *(endpoint_t *, ConfigType *, uint8_t)> createFunc, const char *name)
+{
+    ConfigType cfg = {};
+    if (!createFunc(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER)) {
+        ESP_LOGE(TAG, "Failed to create %s cluster", name);
+    }
+}
+
+void MatterAirQuality::UpdateTemperatureAndHumidity(uint16_t endpointId, const sen66_data_t *data)
+{
+    if (!std::isnan(data->temperature)) {
+        int16_t temp_val = static_cast<int16_t>(data->temperature * 100.0f); // .01°C units
+        UpdateAttribute(endpointId, TemperatureMeasurement::Id, TemperatureMeasurement::Attributes::MeasuredValue::Id, temp_val);
+    }
+
+    if (!std::isnan(data->humidity)) {
+        int16_t hum_val = static_cast<int16_t>(data->humidity * 100.0f); // .01%RH units
+        UpdateAttribute(endpointId, RelativeHumidityMeasurement::Id, RelativeHumidityMeasurement::Attributes::MeasuredValue::Id, hum_val);
+    }
+}
+
+void MatterAirQuality::UpdateConcentrationMeasurements(uint16_t endpointId, const sen66_data_t *data)
+{
+    if (!std::isnan(data->co2_equivalent)) {
+        SetFloatAttribute(endpointId, CarbonDioxideConcentrationMeasurement::Id,
+                          CarbonDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id, data->co2_equivalent);
+    }
+    if (!std::isnan(data->pm1_0)) {
+        SetFloatAttribute(endpointId, Pm1ConcentrationMeasurement::Id,
+                          Pm1ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm1_0);
+    }
+    if (!std::isnan(data->pm2_5)) {
+        SetFloatAttribute(endpointId, Pm25ConcentrationMeasurement::Id,
+                          Pm25ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm2_5);
+    }
+    if (!std::isnan(data->pm10_0)) {
+        SetFloatAttribute(endpointId, Pm10ConcentrationMeasurement::Id,
+                          Pm10ConcentrationMeasurement::Attributes::MeasuredValue::Id, data->pm10_0);
+    }
+    if (!std::isnan(data->voc_index)) {
+        SetFloatAttribute(endpointId, TotalVolatileOrganicCompoundsConcentrationMeasurement::Id,
+                          TotalVolatileOrganicCompoundsConcentrationMeasurement::Attributes::MeasuredValue::Id, data->voc_index);
+    }
+    if (!std::isnan(data->nox_index)) {
+        SetFloatAttribute(endpointId, NitrogenDioxideConcentrationMeasurement::Id,
+                          NitrogenDioxideConcentrationMeasurement::Attributes::MeasuredValue::Id, data->nox_index);
+    }
+}
+
+void MatterAirQuality::UpdateAirQualityLevel(uint16_t endpointId, const sen66_data_t *data)
+{
+    AirQualityLevel level = AirQualityClassifier::classify(data);
+    esp_matter_attr_val_t aq_index_val = esp_matter_int16(level);
+    attribute::update(endpointId, AirQuality::Id, AirQuality::Attributes::AirQuality::Id, &aq_index_val);
+}
+
+template <typename T>
+void MatterAirQuality::UpdateAttribute(uint16_t endpointId, uint32_t clusterId, uint32_t attributeId, T value)
+{
+    esp_matter_attr_val_t attrValue = esp_matter_int16(value);
+    attribute::update(endpointId, clusterId, attributeId, &attrValue);
 }
