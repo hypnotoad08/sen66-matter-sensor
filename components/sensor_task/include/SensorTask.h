@@ -24,6 +24,7 @@ private:
     void smoothSensorData(sen66_data_t &smooth);
     bool shouldReport(const sen66_data_t &smooth) const;
     void logChanges(const sen66_data_t &smooth, const sen66_data_t &old) const;
+    void saveLastPublishedToNVS() const;
 
     // Member variables
     MatterAirQuality &mAqCluster;

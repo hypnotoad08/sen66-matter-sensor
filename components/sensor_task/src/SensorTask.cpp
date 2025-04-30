@@ -2,14 +2,32 @@
 #include <esp_log.h>
 #include <cmath>
 #include <SmaFilter.h>
+#include "nvs_flash.h"
+#include "nvs.h"
 
 static const char *TAG = "SensorTask";
+
+static const char* NVS_NAMESPACE = "aq_task";
+static const char* NVS_KEY_LAST = "lastValues";
 
 SensorTask::SensorTask(MatterAirQuality &aqCluster, uint64_t intervalUs)
     : mAqCluster(aqCluster),
       mIntervalUs(intervalUs),
       mTimer(nullptr)
 {
+
+     // Open our namespace
+     nvs_handle handle;
+     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) == ESP_OK) {
+         size_t required = sizeof(mLastPublished);
+         // Try to read the blob of the same size as our struct
+         if (nvs_get_blob(handle, NVS_KEY_LAST, &mLastPublished, &required) != ESP_OK) {
+             // No saved data yet — start fresh at zero
+             memset(&mLastPublished, 0, sizeof(mLastPublished));
+         }
+         nvs_close(handle);
+     }
+
     // Prepare the esp_timer (but don’t start it yet)
     esp_timer_create_args_t args = {
         .callback = &SensorTask::timerCallback,
@@ -66,6 +84,7 @@ void SensorTask::handleTimer()
     logChanges(smooth, mLastPublished);
     mAqCluster.UpdateAirQualityAttributes(&smooth);
     mLastPublished = smooth; // Update last published data
+    saveLastPublishedToNVS();
 }
 
 void SensorTask::smoothSensorData(sen66_data_t &smooth)
@@ -104,4 +123,23 @@ void SensorTask::logChanges(const sen66_data_t &smooth, const sen66_data_t &old)
              smooth.nox_index - old.nox_index,
              smooth.temperature - old.temperature,
              smooth.humidity - old.humidity);
+}
+
+void SensorTask::saveLastPublishedToNVS() const
+{
+    nvs_handle handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to open NVS namespace");
+        return;
+    }
+    // Write the whole struct as a blob
+    esp_err_t err = nvs_set_blob(handle, NVS_KEY_LAST,
+                                  &mLastPublished,
+                                  sizeof(mLastPublished));
+    if (err == ESP_OK) {
+        nvs_commit(handle);
+    } else {
+        ESP_LOGW(TAG, "Failed to write lastPublished to NVS (%d)", err);
+    }
+    nvs_close(handle);
 }
