@@ -5,8 +5,12 @@
 #include <map>
 #include "sen66_i2c.h"
 #include "AirQualityClassifier.h"
+#include "SEN66Ranges.h"
 #include <esp_matter.h>
 #include <esp_matter_attribute.h>
+#include <esp_matter.h>
+#include <esp_matter_cluster.h>
+#include <esp_matter_feature.h>
 
 
 // Sentinel values for invalid sensor data
@@ -21,7 +25,7 @@ using namespace chip::app::Clusters;
 //------------------------------------------------------------------------------
 // Helper to create a “ConcentrationMeasurement” cluster + its NumericMeasurement
 //------------------------------------------------------------------------------
-#define ADD_MEASUREMENT_CLUSTER(EspClusterNS, ChipCluster, MED, UNIT)                 \
+#define ADD_MEASUREMENT_CLUSTER(EspClusterNS, ChipCluster, MED, UNIT, MIN_VAL, MAX_VAL)                 \
   do {                                                                                \
     /* 1) build & create the base cluster */                                         \
     esp_matter::cluster::EspClusterNS::config_t cfg{};                                \
@@ -36,6 +40,8 @@ using namespace chip::app::Clusters;
                                                                                       \
     /* 2) add the NumericMeasurement feature */                                 \
     esp_matter::cluster::EspClusterNS::feature::numeric_measurement::config_t num_cfg{}; \
+    num_cfg.min_measured_value =(MIN_VAL); \
+    num_cfg.max_measured_value =(MAX_VAL); \
     num_cfg.measurement_unit =                                                        \
       static_cast<uint8_t>(ChipCluster::MeasurementUnitEnum::UNIT);                   \
     esp_err_t err = esp_matter::cluster::EspClusterNS::feature::numeric_measurement::add( \
@@ -45,6 +51,9 @@ using namespace chip::app::Clusters;
       ESP_LOGW(TAG, #EspClusterNS " MEA unsupported (0x%X)", err);                    \
     }                                                                                 \
   } while (0)
+
+
+
 
 MatterAirQuality::MatterAirQuality(node_t *node)
     : m_node(node), m_air_quality_endpoint(nullptr) {}
@@ -120,27 +129,32 @@ void MatterAirQuality::AddAirQualityFeatures()
 
 void MatterAirQuality::AddStandardMeasurementClusters()
 {
+    using namespace sen66_ranges;
     AddCluster<cluster::temperature_measurement::config_t>(
-        cluster::temperature_measurement::create, "TemperatureMeasurement");
+        cluster::temperature_measurement::create, "TemperatureMeasurement", TEMP_MIN, TEMP_MAX); 
 
     AddCluster<cluster::relative_humidity_measurement::config_t>(
-        cluster::relative_humidity_measurement::create, "RelativeHumidityMeasurement");
+        cluster::relative_humidity_measurement::create, "RelativeHumidityMeasurement", HUM_MIN, HUM_MAX);
 }
 
 void MatterAirQuality::AddCustomMeasurementClusters()
 {
-    ADD_MEASUREMENT_CLUSTER(pm1_concentration_measurement, Pm1ConcentrationMeasurement, kAir, kUgm3);
-    ADD_MEASUREMENT_CLUSTER(pm25_concentration_measurement, Pm25ConcentrationMeasurement, kAir, kUgm3);
-    ADD_MEASUREMENT_CLUSTER(pm10_concentration_measurement, Pm10ConcentrationMeasurement, kAir, kUgm3);
-    ADD_MEASUREMENT_CLUSTER(total_volatile_organic_compounds_concentration_measurement, TotalVolatileOrganicCompoundsConcentrationMeasurement, kAir, kPpm);
-    ADD_MEASUREMENT_CLUSTER(carbon_dioxide_concentration_measurement, CarbonDioxideConcentrationMeasurement, kAir, kPpm);
-    ADD_MEASUREMENT_CLUSTER(nitrogen_dioxide_concentration_measurement, NitrogenDioxideConcentrationMeasurement, kAir, kPpm);
+    using namespace sen66_ranges;
+    ADD_MEASUREMENT_CLUSTER(pm1_concentration_measurement, Pm1ConcentrationMeasurement, kAir, kUgm3,PM_MIN, PM_MAX);
+    ADD_MEASUREMENT_CLUSTER(pm25_concentration_measurement, Pm25ConcentrationMeasurement, kAir, kUgm3,PM_MIN, PM_MAX);
+    ADD_MEASUREMENT_CLUSTER(pm10_concentration_measurement, Pm10ConcentrationMeasurement, kAir, kUgm3,PM_MIN, PM_MAX);
+    ADD_MEASUREMENT_CLUSTER(total_volatile_organic_compounds_concentration_measurement, TotalVolatileOrganicCompoundsConcentrationMeasurement, kAir, kPpm,VOC_MIN, VOC_MAX);    
+    ADD_MEASUREMENT_CLUSTER(carbon_dioxide_concentration_measurement, CarbonDioxideConcentrationMeasurement, kAir, kPpm,ECO2_MIN, ECO2_MAX);
+    ADD_MEASUREMENT_CLUSTER(nitrogen_dioxide_concentration_measurement, NitrogenDioxideConcentrationMeasurement, kAir, kPpm,NOX_MIN, NOX_MAX);
 }
 
 template <typename ConfigType>
-void MatterAirQuality::AddCluster(std::function<cluster_t *(endpoint_t *, ConfigType *, uint8_t)> createFunc, const char *name)
+void MatterAirQuality::AddCluster(std::function<cluster_t *(endpoint_t *, ConfigType *, uint8_t)> createFunc, const char *name, float minValue, float maxValue)
 {
-    ConfigType cfg = {};
+    ConfigType cfg{};
+    cfg.min_measured_value = minValue;
+    cfg.max_measured_value = maxValue;
+
     if (!createFunc(m_air_quality_endpoint, &cfg, CLUSTER_FLAG_SERVER)) {
         ESP_LOGE(TAG, "Failed to create %s cluster", name);
     }

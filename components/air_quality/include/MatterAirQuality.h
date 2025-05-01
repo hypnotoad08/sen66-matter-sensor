@@ -22,7 +22,7 @@ private:
     void AddCustomMeasurementClusters();
 
     template <typename ConfigType>
-    void AddCluster(std::function<esp_matter::cluster_t *(esp_matter::endpoint_t *, ConfigType *, uint8_t)> createFunc, const char *name);
+    void AddCluster(std::function<esp_matter::cluster_t *(esp_matter::endpoint_t *, ConfigType *, uint8_t)> createFunc, const char *name, float minValue, float maxValue);
 
     template <typename T>
     void UpdateAttribute(uint16_t endpointId, uint32_t clusterId, uint32_t attributeId, T value);
