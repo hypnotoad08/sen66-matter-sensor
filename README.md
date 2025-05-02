@@ -56,8 +56,8 @@ sen66-matter-sensor/
 │   │   └── CMakeLists.txt
 │   └── air_quality/          # Matter cluster glue
 │       ├── include/          # `MatterAirQuality.h`
-│   ├── src/                  # Cluster implementation
-│   └── CMakeLists.txt
+│       ├── src/              # Cluster implementation
+│       └── CMakeLists.txt
 ├── .gitignore                # Git ignore rules
 └── README.md                 # This file
 ```
@@ -87,15 +87,7 @@ sen66-matter-sensor/
 To program custom Matter vendor/product details, use `esp-matter-mfg-tool`:
 
 ```bash
-esp-matter-mfg-tool \
-  -cn "SEN66 Matter Air Sensor" \
-  -v 0xFFF2 --vendor-name "Lee Dev" \
-  -p 0x66A1 --product-name "Nano AQ Sensor" \
-  --pai --serial-num SN-ESP32S3-0001 \
-  --hw-ver 1 --hw-ver-str v1.0 \
-  -k path/to/test-PAI-0xFFF2-key.pem \
-  -c path/to/test-PAI-0xFFF2-cert.pem \
-  -cd path/to/Chip-Test-CD-0xFFF2-0x66A1.der
+esp-matter-mfg-tool   -cn "SEN66 Matter Air Sensor"   -v 0xFFF2 --vendor-name "Lee Dev"   -p 0x66A1 --product-name "Nano AQ Sensor"   --pai --serial-num SN-ESP32S3-0001   --hw-ver 1 --hw-ver-str v1.0   -k path/to/test-PAI-0xFFF2-key.pem   -c path/to/test-PAI-0xFFF2-cert.pem   -cd path/to/Chip-Test-CD-0xFFF2-0x66A1.der
 ```
 
 ### Reverting to Built-in ESP32 DAC
@@ -123,13 +115,12 @@ To restore the default (Test) DAC setup in ESP Matter using your checked-in `sdk
    CONFIG_FACTORY_COMMISSIONABLE_DATA_PROVIDER=n
    CONFIG_FACTORY_DEVICE_INSTANCE_INFO_PROVIDER=n
    ```
-
 3. **Partition table**  
-   If you have a `chip-factory` partition in your `partitions.csv`, remove its entry so your CSV omits:
+   If you have a `chip-factory` partition in your `partitions.csv`, remove its entry:
    ```text
    chip-factory,   data, nvs, 0x1A000,   0x06000,
    ```
-   Then save and flash with the updated table.
+      Then save and flash with the updated table.
 
 This ensures the firmware falls back to the built-in ESP32 DAC provider rather than using the factory partition.
 
@@ -160,27 +151,55 @@ The following QR code and manual pairing data are _hard-coded_ to match the prov
 
 ## 5. Usage & Behavior
 
-- Every **5 s**, the firmware:
-  1. Initiates a SEN66 measurement
-  2. Filters out sentinel values (`0x7FFF`, `0xFFFF`)
-  3. Converts raw → real-world units
-  4. Updates valid Matter `MeasuredValue` attributes only
+- **Altitude Compensation**  
+  At startup we set the SEN66 sensor altitude (defaults to 0 m). For example, Cleveland, OH is approximately **206 m** above sea level for CO₂ pressure compensation.
 
-Supported Matter clusters:
-- TemperatureMeasurement
-- RelativeHumidityMeasurement
-- Pm1ConcentrationMeasurement
-- Pm25ConcentrationMeasurement
-- Pm10ConcentrationMeasurement
-- CarbonDioxideConcentrationMeasurement
-- TotalVolatileOrganicCompoundsConcentrationMeasurement
-- NitrogenDioxideConcentrationMeasurement
+- **Invalid-Reading Protection**  
+  Any raw “sentinel” values (`0x7FFF`, `0xFFFF`) are converted to `NaN`. If *any* channel in a cycle is non-finite, that entire cycle is skipped.
+
+- **Smoothing**  
+  We apply a 5-sample Simple Moving Average to PM₁.₀, PM₂.₅ and PM₁₀ readings before running change-threshold logic.
+
+- **Change-Threshold Reporting**  
+  Matter attributes are only updated when the change vs. the last published reading exceeds these thresholds:
+
+  | Parameter       | Threshold |
+  | --------------- | --------- |
+  | PM₁.₀           | 1 µg/m³   |
+  | PM₂.₅           | 1 µg/m³   |
+  | PM₁₀            | 1 µg/m³   |
+  | CO₂             | 50 ppm    |
+  | VOC             | 10 ppb    |
+  | NOₓ             | 5 ppb     |
+  | Temperature     | 0.5 °C    |
+  | Humidity        | 2 %RH     |
+
+- **State Persistence**  
+  The last published sensor values are stored in NVS and restored across resets, avoiding jumps or stale data when the device restarts.
+
+- **Measurement Loop (every 5 s)**  
+  1. Initiate a SEN66 measurement  
+  2. Filter out sentinel values → `NaN`  
+  3. Convert raw → real-world units  
+  4. Apply SMA smoothing to PM readings  
+  5. Compare deltas vs. thresholds  
+  6. Update only the Matter `MeasuredValue` attributes that exceed thresholds  
+
+**Supported Matter clusters:**  
+- TemperatureMeasurement  
+- RelativeHumidityMeasurement  
+- Pm1ConcentrationMeasurement  
+- Pm25ConcentrationMeasurement  
+- Pm10ConcentrationMeasurement  
+- CarbonDioxideConcentrationMeasurement  
+- TotalVolatileOrganicCompoundsConcentrationMeasurement  
+- NitrogenDioxideConcentrationMeasurement  
 
 ## 6. Dependencies
 
 - Sensirion I²C SEN66 driver: https://github.com/Sensirion/embedded-i2c-sen66  
 - ESP-Matter (`esp_matter` component)  
-- ESP-IDF components: `nvs_flash`, `esp_timer`
+- ESP-IDF components: `nvs_flash`, `esp_timer`  
 
 ## 7. Further Reading
 
